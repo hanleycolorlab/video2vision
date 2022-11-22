@@ -1,0 +1,7 @@
+ipyevents
+matplotlib
+notebook
+rawpy
+sphinx
+tabulate
+tifffile

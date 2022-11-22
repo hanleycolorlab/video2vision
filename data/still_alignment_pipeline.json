@@ -1,0 +1,74 @@
+[
+	{
+		"index": 0,
+		"operator": {
+			"class": "Loader",
+			"path": null,
+			"batch_size": 1
+		},
+		"edges": [[1, {"in_slot": 0}]]
+	}, {
+		"index": 1,
+		"operator": {
+			"class": "HorizontalFlip"
+		},
+		"edges": [[2, {"in_slot": 0}]]
+	}, {
+		"index": 2,
+		"operator": {
+			"class": "Resize",
+			"scale": [5948, 3346]
+		},
+		"edges": [[3, {"in_slot": 0}]]
+	}, {
+		"index": 3,
+		"operator": {
+			"class": "Rotate",
+			"angle": -1.731,
+			"output_size": [5948, 3346]
+		},
+		"edges": [[4, {"in_slot": 0}]]
+	}, {
+		"index": 4,
+		"operator": {
+			"class": "Translation",
+			"shift_x": -193.667,
+			"shift_y": -183.667,
+			"output_size": [5948, 3346]
+		},
+		"edges": [[5, {"in_slot": 0}]]
+	}, {
+		"index": 5,
+		"operator": {
+			"class": "Pad",
+			"pad": [15, 15, 26, 26],
+			"value": [0, 0, 0]
+		},
+		"edges": [[7, {"in_slot": 0}]]
+	}, {
+		"index": 6,
+		"operator": {
+			"class": "Loader",
+			"path": null,
+			"batch_size": 1
+		},
+		"edges": [[7, {"in_slot": 1}]]
+	}, {
+		"index": 7,
+		"operator": {
+			"class": "AutoAlign",
+			"num_votes": 4,
+			"mask": [27, 16, 5730, 3094],
+			"bands": [[0, 1, 2], []]
+		},
+		"edges": [[8, {"in_slot": 0}]]
+	}, {
+		"index": 8,
+		"operator": {
+			"class": "Writer",
+			"path": null,
+			"extension": "png"
+		},
+		"edges": []
+	}
+]

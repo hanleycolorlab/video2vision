@@ -1,0 +1,4 @@
+networkx
+numpy
+opencv-contrib-python-headless
+scipy

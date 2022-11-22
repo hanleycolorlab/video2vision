@@ -1,0 +1,60 @@
+[
+	{
+		"index": 0,
+		"operator": {
+			"class": "Loader",
+			"path": null,
+			"batch_size": 1
+		},
+		"edges": [[1, {"in_slot": 0}]]
+	}, {
+		"index": 1,
+		"operator": {
+			"class": "HorizontalFlip"
+		},
+		"edges": [[2, {"in_slot": 0}]]
+	}, {
+		"index": 2,
+		"operator": {
+			"class": "Translation",
+			"shift_x": -130,
+			"shift_y": -120,
+			"output_size": [3840, 2160]
+		},
+		"edges": [[3, {"in_slot": 0}]]
+	}, {
+		"index": 3,
+		"operator": {
+			"class": "Rotate",
+			"angle": -2,
+			"output_size": [3840, 2160]
+		},
+		"edges": [[7, {"in_slot": 0}]]
+	}, {
+		"index": 6,
+		"operator": {
+			"class": "Loader",
+			"path": null,
+			"batch_size": 1
+		},
+		"edges": [[7, {"in_slot": 1}]]
+	}, {
+		"index": 7,
+		"operator": {
+			"class": "AutoTemporalAlign",
+			"time_shift_range": [-10, 10],
+			"mask": [50, 50, -50, -50],
+			"bands": [[0, 1, 2], []],
+			"method": "ecc"
+		},
+		"edges": [[8, {"in_slot": 0}]]
+	}, {
+		"index": 8,
+		"operator": {
+			"class": "Writer",
+			"path": null,
+			"extension": "mp4"
+		},
+		"edges": []
+	}
+]
