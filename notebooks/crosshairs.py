@@ -26,7 +26,14 @@ _PAIR = traitlets.Tuple(traitlets.Int(), traitlets.Int())
 
 DEFAULT_CROSSHAIR = np.zeros((10, 10, 4), dtype=np.uint8)
 DEFAULT_CROSSHAIR[:, :, 1] = DEFAULT_CROSSHAIR[:, :, 3] = 255
-FONT = ImageFont.truetype('Inconsolata.otf', 32)
+
+# Try to get Inconsolata. If it's not available, try arial, which should be
+# available on most Windows systems.
+try:
+    FONT = ImageFont.truetype('Inconsolata.otf', 32)
+except OSError:
+    FONT = ImageFont.truetype('arial.ttf', 32)
+
 FONT_COLOR = (0, 255, 0)
 
 
