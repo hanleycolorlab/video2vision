@@ -171,7 +171,12 @@ class AutoAlign(Warp, AutoOperator):
             con_pts = control_pts[c_idx].reshape(-1, 2)
 
             self.coe = Warp.build_from_tiepoints(src_pts, con_pts, size).coe
-            warped_image = super().apply(source)
+            # The copy is necessary because Warp.apply modifies the dictionary
+            # in-place and returns it. It does this because it assumes it's
+            # been called through __call__, which will have already performed a
+            # shallow copy. This is not an expensive op since it's only a
+            # shallow copy.
+            warped_image = super().apply(copy(source))
 
             # Test the alignment by calculating ECC on the entire image stack.
             # Skip the test if we're only doing this once.
@@ -267,7 +272,12 @@ class AutoAlign(Warp, AutoOperator):
             except cv2.error:
                 continue
 
-            warped_image = super().apply(source)
+            # The copy is necessary because Warp.apply modifies the dictionary
+            # in-place and returns it. It does this because it assumes it's
+            # been called through __call__, which will have already performed a
+            # shallow copy. This is not an expensive op since it's only a
+            # shallow copy.
+            warped_image = super().apply(copy(source))
 
             # Test the alignment by calculating ECC on the entire image stack.
             # Skip the test if we're only doing this once.
