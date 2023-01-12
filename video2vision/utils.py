@@ -7,6 +7,8 @@ from typing import Any, Dict, Optional, Tuple
 import cv2
 import numpy as np
 
+_CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
+
 __all__ = [
     'extract_samples', 'locate_aruco_markers', 'read_jazirrad_file'
 ]
@@ -244,7 +246,11 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
     x = _coerce_to_dict(x)
     ts, corners, found_ids = [], [], []
 
-    detector_params = cv2.aruco.DetectorParameters_create()
+    # Function name changed in 4.7.0
+    if _CV2_VERSION >= (4, 7, 0):
+        detector_params = cv2.aruco.DetectorParameters()
+    else:
+        detector_params = cv2.aruco.DetectorParameters_create()
     detector_params.adaptiveThreshWinSizeMax = 256
 
     with _coerce_to_4dim(x):

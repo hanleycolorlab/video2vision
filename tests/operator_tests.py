@@ -207,9 +207,10 @@ class LinearMapTest(unittest.TestCase):
         def _load_csv(path):
             return np.genfromtxt(path, skip_header=1, delimiter=',')[:, 1:]
 
-        data_root = os.path.join(os.path.dirname(__file__), '../data')
+        data_root = os.path.join(os.path.dirname(__file__), 'data')
         cam_illum_path = os.path.join(data_root, 'camera_illumination.csv')
         cam_illum = _load_csv(cam_illum_path)
+        data_root = os.path.join(os.path.dirname(__file__), '../data')
         cam_sense_path = os.path.join(data_root, 'camera_sensitivities.csv')
         cam_sense = _load_csv(cam_sense_path)
         apis_sense_path = os.path.join(data_root, 'apis_sensitivities.csv')

@@ -203,7 +203,15 @@ class AutoLinearize(unittest.TestCase):
         # Place ARUCO marks on image
         uls = [[10, 10], [10, 440], [440, 10], [440, 440]]
         for i, (x, y) in enumerate(uls):
-            mark = cv2.aruco.drawMarker(v2v.utils._MARKER_DICTIONARY, i, 50)
+            # Name of this function changed in cv2 version 4.7.0
+            if v2v.utils._CV2_VERSION < (4, 7, 0):
+                mark = cv2.aruco.drawMarker(
+                    v2v.utils._MARKER_DICTIONARY, i, 50
+                )
+            else:
+                mark = cv2.aruco.generateImageMarker(
+                    v2v.utils._MARKER_DICTIONARY, i, 50
+                )
             image[y:y + 50, x:x + 50, :] = mark.reshape(50, 50, 1)
         # Add patches to sample. The polynomial we are trying to fit will be
         # p(x) = x^2 - 1.
