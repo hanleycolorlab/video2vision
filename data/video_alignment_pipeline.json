@@ -4,7 +4,8 @@
 		"operator": {
 			"class": "Loader",
 			"path": null,
-			"batch_size": 1
+			"batch_size": 1,
+			"expected_size": [3840, 2160]
 		},
 		"edges": [[1, {"in_slot": 0}]]
 	}, {
@@ -35,7 +36,8 @@
 		"operator": {
 			"class": "Loader",
 			"path": null,
-			"batch_size": 1
+			"batch_size": 1,
+			"expected_size": [3840, 2160]
 		},
 		"edges": [[7, {"in_slot": 1}]]
 	}, {

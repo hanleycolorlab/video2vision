@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from glob import glob
 import os
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -139,18 +139,21 @@ class Loader(Operator):
     num_inputs = 0
 
     def __init__(self, path: Optional[Union[str, Iterator[str]]] = None,
-                 batch_size: int = 1):
+                 batch_size: int = 1,
+                 expected_size: Optional[Tuple[int, int]] = None):
         '''
         Args:
             path (str or iterator of str): Path(s) to the images to load. This
             can be a directory, in which case everything in the directory will
             be loaded, or it can be a path to a single image, or it can be a
             string with wildcards.
-
             batch_size (int): Number of images to return at a time.
+            expected_size (optional, pair of int): If provided, make sure that
+            the inputs are of this size. This should be (width, height).
         '''
         self.set_path(path)
         self.batch_size = batch_size
+        self.expected_size = expected_size
         # This is used to provide external inputs from memory to a pipeline,
         # instead of loading from disk. It is only consulted if the global
         # variable _READ_WRITE_FROM_BUFFER is true.
@@ -162,6 +165,7 @@ class Loader(Operator):
         # memory.
         if _READ_WRITE_FROM_TO_BUFFER:
             while self.buff:
+                self._check_size(self.buff[0])
                 yield self.buff.pop(0), None
 
         else:
@@ -170,18 +174,29 @@ class Loader(Operator):
                 if reader is not None:
                     ret, frame = reader.read()
                     while ret and reader.isOpened():
+                        self._check_size(frame)
                         # Rescale to [0, 1] before returning
                         yield frame.astype(np.float32) / 256., name
                         ret, frame = reader.read()
                 else:
                     # load handles rescaling for us
-                    yield load(path), name
+                    image = load(path)
+                    self._check_size(image)
+                    yield image, name
 
     def __len__(self) -> int:
         if _READ_WRITE_FROM_TO_BUFFER:
             return len(self.buff)
         else:
             return sum(int(_get_num_frames(r)) for r in self._readers)
+
+    def _check_size(self, image: np.ndarray):
+        if self.expected_size is not None:
+            if tuple(self.expected_size) != image.shape[:2][::-1]:
+                raise RuntimeError(
+                    f'Image does not match expected size: '
+                    f'{image.shape[:2][::-1]} vs {self.expected_size}'
+                )
 
     def apply(self) -> Dict:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
@@ -240,6 +255,8 @@ class Loader(Operator):
             _, image = reader.read()
             image = image.astype(np.float32) / 256.
 
+        self._check_size(image)
+
         return image
 
     def set_path(self, paths: Optional[Union[str, Iterator[str]]]):
@@ -270,6 +287,7 @@ class Loader(Operator):
         return {
             'class': self.__class__.__name__,
             'batch_size': self.batch_size,
+            'expected_size': self.expected_size,
         }
 
 
@@ -461,7 +479,8 @@ def _get_writer(path: str, image: np.ndarray) -> cv2.VideoWriter:
 def _read_write_from_to_buffer():
     '''
     Context manager inside of which :class:`video2vision.Loader` and
-    :class:`video2vision.Writer` will read from and write to internal buffers instead of disk.
+    :class:`video2vision.Writer` will read from and write to internal buffers
+    instead of disk.
     '''
     global _READ_WRITE_FROM_TO_BUFFER
     _READ_WRITE_FROM_TO_BUFFER, was = True, _READ_WRITE_FROM_TO_BUFFER

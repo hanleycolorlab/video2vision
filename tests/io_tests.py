@@ -138,6 +138,56 @@ class IOTest(unittest.TestCase):
             self.assertTrue((out['image'][:, :, 0, :] == image_1).all())
             self.assertTrue((out['image'][:, :, 1, :] == image_2).all())
 
+    def test_iter_check_size_with_png(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_path_1 = os.path.join(temp_root, '1.png')
+            v2v.save(np.zeros((16, 16, 3), dtype=np.float32), temp_path_1)
+            temp_path_2 = os.path.join(temp_root, '2.png')
+            v2v.save(np.zeros((17, 16, 3), dtype=np.float32), temp_path_2)
+            loader = v2v.Loader(
+                [temp_path_1, temp_path_2],
+                expected_size=(16, 16),
+            )
+            loader()
+            with self.assertRaises(RuntimeError):
+                loader()
+
+    def test_iter_check_size_with_mp4(self):
+        video = _get_video()
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            path = os.path.join(temp_root, 'test.mp4')
+            v2v.save(video, path)
+            loader = v2v.Loader(temp_root, batch_size=1, expected_size=(8, 8))
+
+            with self.assertRaises(RuntimeError):
+                loader()
+
+    def test_get_frame_check_size_with_png(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_path_1 = os.path.join(temp_root, '1.png')
+            v2v.save(np.zeros((16, 16, 3), dtype=np.float32), temp_path_1)
+            temp_path_2 = os.path.join(temp_root, '2.png')
+            v2v.save(np.zeros((17, 16, 3), dtype=np.float32), temp_path_2)
+            loader = v2v.Loader(
+                [temp_path_1, temp_path_2],
+                expected_size=(16, 16)
+            )
+            loader.get_frame(0)
+            with self.assertRaises(RuntimeError):
+                loader.get_frame(1)
+
+    def test_get_frame_check_size_with_mp4(self):
+        video = _get_video()
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            path = os.path.join(temp_root, 'test.mp4')
+            v2v.save(video, path)
+            loader = v2v.Loader(temp_root, batch_size=1, expected_size=(8, 8))
+
+            with self.assertRaises(RuntimeError):
+                loader.get_frame(0)
+
     def test_loader_buffer(self):
         '''
         Tests the :class:`Loader`'s ability to work with internal buffers.
