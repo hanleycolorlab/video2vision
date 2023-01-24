@@ -5,6 +5,7 @@ from elementwise_tests import *
 from io_tests import *
 from operator_tests import *
 from pipeline_tests import *
+from warp_tests import *
 from utils_tests import *
 
 

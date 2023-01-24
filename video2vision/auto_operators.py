@@ -15,7 +15,6 @@ from .operators import (
     ConcatenateOnBands,
     Operator,
     OPERATOR_REGISTRY,
-    Warp
 )
 from .utils import (
     _coerce_to_4dim,
@@ -23,6 +22,7 @@ from .utils import (
     extract_samples,
     locate_aruco_markers
 )
+from .warp import Warp
 
 __all__ = ['AutoAlign', 'AutoLinearize', 'AutoOperator', 'AutoTemporalAlign']
 

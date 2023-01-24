@@ -120,6 +120,7 @@ class CoercionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             v2v.utils._coerce_to_mask(np.ones((4, 4, 4), dtype=np.uint8))
 
+
 class UtilitiesTests(unittest.TestCase):
     def test_extract_samples(self):
         # First, image. We choose the size of the image so we can test the
