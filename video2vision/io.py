@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from glob import glob
 import os
+from statistics import mean
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
@@ -33,7 +34,9 @@ _VIDEO_FPS = 23.976023976023978
 # to apply a Pipeline to images in memory instead of running the normal way.
 _READ_WRITE_FROM_TO_BUFFER = False
 
-_IMAGE_EXTENSIONS = ['arw', 'jpeg', 'jpg', 'mp4', 'png', 'raw', 'tif', 'tiff']
+_IMAGE_EXTENSIONS = [
+    'arw', 'jpeg', 'jpg', 'mp4', 'nef', 'png', 'raw', 'tif', 'tiff'
+]
 
 
 def load(path: str) -> np.ndarray:
@@ -53,6 +56,8 @@ def load(path: str) -> np.ndarray:
         if not has_tiff:
             raise ImportError('tifffile is needed to read tif files')
         image = tifffile.imread(path)
+        # Rescale to [0, 1] and float32
+        image = image.astype(np.float32) / 256.
 
     elif path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
@@ -63,18 +68,38 @@ def load(path: str) -> np.ndarray:
                 frames.append(frame)
         reader.release()
         image = np.stack(frames, axis=2)
+        # Rescale to [0, 1] and float32
+        image = image.astype(np.float32) / 256.
 
-    elif path.lower().endswith('.arw'):
+    elif path.lower().endswith(('.arw', '.nef')):
         if not has_rawpy:
             raise ImportError('rawpy is needed to read arw files')
+
         with rawpy.imread(path) as raw_file:
-            image = raw_file.postprocess()
+            image = raw_file.postprocess(
+                # Prevents gamma correction
+                gamma=(1, 1),
+                output_color=rawpy.ColorSpace.raw,
+                no_auto_scale=True,
+                no_auto_bright=True,
+                # Output will be maximum precision
+                output_bps=16,
+            )
+            white_level = np.array([
+                raw_file.camera_white_level_per_channel[0],
+                mean((raw_file.camera_white_level_per_channel[1],
+                      raw_file.camera_white_level_per_channel[3])),
+                raw_file.camera_white_level_per_channel[2],
+            ])
+        # Rescales to [0, 1] and float32
+        image = image.astype(np.float32) / white_level.reshape(1, 1, 3)
+        # Reverse channels from RGB to BGR
+        image = image[:, :, ::-1]
 
     else:
         image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-
-    # Rescale to [0, 1] and float32
-    image = image.astype(np.float32) / 256.
+        # Rescale to [0, 1] and float32
+        image = image.astype(np.float32) / 256.
 
     return _coerce_to_image(image)
 
@@ -115,6 +140,9 @@ def save(image: np.ndarray, path: str):
             raise ImportError('tifffile is needed to write tif files')
         # photometric='minisblack' suppresses a DeprecationWarning.
         tifffile.imwrite(path, image, photometric='minisblack')
+
+    elif path.lower().endswith(('.nef', '.arw')):
+        raise NotImplementedError('Saving in raw form is not supported')
 
     else:
         return cv2.imwrite(path, image)

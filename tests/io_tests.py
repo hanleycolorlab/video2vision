@@ -32,8 +32,8 @@ class IOTest(unittest.TestCase):
         '''
         path = os.path.join(os.path.dirname(__file__), 'data/raw_example.arw')
         image = v2v.load(path)
-        should_be = np.array([128, 128, 130, 133, 134, 134, 134, 134.]) / 256
-        self.assertTrue((image[:8, 0, 0] == should_be).all())
+        should_be = np.array([456, 456, 474, 492, 493, 494, 494, 494.]) / 15360
+        self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
 
     def test_load_and_save(self):
         '''
@@ -55,7 +55,7 @@ class IOTest(unittest.TestCase):
             # Although save can write grayscale fine, it will be converted to
             # BGR on read by cv2, and this cannot be avoided as per:
             #
-            # https://stackoverflow.com/questoins/11159506/opencv-videocapture-set-greyscale
+            # https://stackoverflow.com/questions/11159506/opencv-videocapture-set-greyscale
             #
             # Not yet sure if it's SAVED as grayscale but just cast to BGR on
             # load, or if it's converted to BGR on save.
