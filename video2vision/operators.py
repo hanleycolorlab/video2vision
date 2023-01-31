@@ -6,17 +6,18 @@ other images.
 '''
 from copy import copy
 import json
+from math import sqrt
 from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 
-from .utils import _coerce_to_3dim, _coerce_to_dict, Registry
+from .utils import _coerce_to_3dim, _coerce_to_4dim, _coerce_to_dict, Registry
 
 __all__ = [
     'Operator', 'ConcatenateOnBands', 'HorizontalFlip', 'LinearMap',
     'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'TemporalShift',
-    'VerticalFlip',
+    'UBGRtoXYZ', 'VerticalFlip',
 ]
 
 # This provides a registry of operators. This is used when saving and restoring
@@ -438,6 +439,60 @@ class TemporalShift(Operator):
             'class': self.__class__.__name__,
             'shift': self.shift,
         }
+
+
+@OPERATOR_REGISTRY.register
+class UBGRtoXYZ(Operator):
+    '''
+    This operator converts a four-channel image containing ultraviolet, blue,
+    green, and red bands to an easily visualizable 3-channel form. It expects
+    to be passed four bands, in that order. The equations are given by:
+
+    .. math::
+
+        u = \\frac{U}{U + B + G + R}
+        s = \\frac{B}{U + B + G + R}
+        m = \\frac{G}{U + B + G + R}
+        l = \\frac{R}{U + B + G + R}
+
+        X = \\frac{\\sqrt{3}}{\\sqrt{2}2}(1 - 2s - m - u)
+        Y = \\frac{-1 + 3m + u}{2\\sqrt{2}}
+        Z = u - \\frac{1}{4}
+
+    And returned as (X, Y, Z), in that order.
+
+    This is taken from:
+
+        Endeler and Mielke, 2005. "Comparing Entire Colour Patterns as Birds
+        See Them." *Biological Journal of the Linnean Society*, Vol. 86 No. 4,
+        pp. 405-431.
+    '''
+    def apply(self, x: Dict) -> Dict:
+        with _coerce_to_4dim(x):
+            if x['image'].shape[3] != 4:
+                raise ValueError(
+                    f"UBGRtoXYZ operator requires 4 bands, got "
+                    f"{x['image'].shape}"
+                )
+
+            # First, convert (U, B, G, R) -> (u, s, m, l):
+            x['image'] = x['image'] / x['image'].sum(3, keepdims=True)
+            u, s, m, l = np.moveaxis(x['image'], 3, 0)  # noqa
+            # Second, convert (u, s, m, l) -> (X, Y, Z). Note careful placement
+            # of parantheses so that scalars are fully calculated before being
+            # multiplied or divided by the array. We assign bands as ZYX.
+            x['image'] = np.empty((*x['image'].shape[:3], 3), dtype=np.float32)
+            # Since (u + s + m + l = 1, we can rewrite (1 - 2s - m - u) as
+            # (l - s), which is more efficient since it requires only one
+            # subtraction.
+            x['image'][..., 2] = (sqrt(3 / 2) / 2) * (l - s)         # X
+            x['image'][..., 1] = (-1 + (3 * m) + u) / (2 * sqrt(2))  # Y
+            x['image'][..., 0] = u - 0.25                            # Z
+
+        return x
+
+    def apply_points(self, pts: np.ndarray) -> np.ndarray:
+        return pts
 
 
 @OPERATOR_REGISTRY.register
