@@ -20,7 +20,8 @@ class DisplayBox(widgets.VBox):
     or backward in a video or set of images, but no other functionality.
     '''
     def __init__(self, *loaders, t: int = 0,
-                 shifts: Optional[List[int]] = None):
+                 shifts: Optional[List[int]] = None,
+                 preprocess: Optional[Callable] = None):
         '''
         Args:
             loaders (:class:`video2vision.Loader`): The loaders to use.
@@ -28,13 +29,17 @@ class DisplayBox(widgets.VBox):
             shifts (optional, list of int): If provided, this gives offsets to
             apply to the loaders relative to each other, e.g. if there is a
             temporal shift between the sources.
+            preprocess (optional, callable): If provided, this function is
+            called on the inputs prior to displaying them.
         '''
-        self.loaders = loaders
+        self.loaders, self.preprocess = loaders, preprocess
         if shifts is None:
             shifts = [0 for _ in self.loaders]
         self.shifts = shifts
 
         images = [r.get_frame(t + s) for r, s in zip(self.loaders, shifts)]
+        if self.preprocess is not None:
+            images = self.preprocess(*images)
         h = max(image.shape[0] for image in images)
         w = sum(image.shape[1] for image in images)
         num_frames = min(len(loader) for loader in self.loaders)
@@ -58,10 +63,15 @@ class DisplayBox(widgets.VBox):
             self.set_images(*images)
 
     def set_images(self, *images):
+        if self.preprocess is not None:
+            images = self.preprocess(*images)
+
         x = 0
         for image in images:
             # Convert from BGR, float32, [0, 1] to RGB, uint8, [0, 255]
-            image = np.clip(256 * image[:, :, ::-1], 0, 255).astype(np.uint8)
+            if (image.ndim == 3) and (image.shape[2] == 3):
+                image = image[:, :, ::-1]
+            image = np.clip(256 * image, 0, 255).astype(np.uint8)
             self.display.paste(Image.fromarray(image), (x, 0))
             x += image.shape[1]
         self.display_image.value = self.display._repr_png_()
