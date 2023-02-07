@@ -23,10 +23,8 @@ class Warp(Operator):
         '''
         Args:
             coe (:class:`np.ndarray`): Transform matrix.
-
-            output_size (tuple of int): The height and width of the output
+            output_size (tuple of int): The width and height of the output
             image.
-
             sampling_mode (int): Interpolation mode.
         '''
         self.coe = np.array(coe).astype(np.float32)
@@ -114,14 +112,14 @@ class Rotate(Warp):
         '''
         Args:
             angle (float): Angle of the rotation.
-            output_size (tuple of int): The height and width of the output
+            output_size (tuple of int): The width and height of the output
             image.
             center (optional, tuple of int): The center point in the input
             image to rotate around.
         '''
         # Note: copied from imutils to ensure consistency with older versions.
         if center is None:
-            center = (output_size[1] // 2, output_size[0] // 2)
+            center = (output_size[0] // 2, output_size[1] // 2)
         self.angle, self.center = angle, center
         # Note: center needs to be a tuple; some versions of OpenCV will raise
         # a SystemError if it's not.
@@ -148,7 +146,7 @@ class Translation(Warp):
         Args:
             shift_x (float): Shift in x coordinate.
             shift_y (float): Shift in y coordinate.
-            output_size (tuple of int): The height and width of the output
+            output_size (tuple of int): The width and height of the output
             image.
         '''
         self.shift_x, self.shift_y = shift_x, shift_y

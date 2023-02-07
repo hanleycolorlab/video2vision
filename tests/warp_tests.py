@@ -12,8 +12,8 @@ class RotateTest(unittest.TestCase):
         '''
         This tests basic coercion and handling.
         '''
-        # This should be a 90 degree rotation.
-        warp_op = v2v.Rotate(90, output_size=(30, 20), center=(15, 10))
+        # This should be a 90 degree rotation, around the center of the image.
+        warp_op = v2v.Rotate(90, output_size=(30, 20))
 
         # Check basic output
         image = np.arange(600.).reshape(20, 30)
@@ -73,13 +73,16 @@ class RotateTest(unittest.TestCase):
         '''
         Tests the apply_points method.
         '''
-        warp_op = v2v.Rotate(90, output_size=(200, 300), center=(150, 100))
+        warp_op = v2v.Rotate(90, output_size=(200, 300))
         # Test apply_points
-        xs, ys = np.meshgrid(np.arange(300), np.arange(200))
+        xs, ys = np.meshgrid(np.arange(200), np.arange(300))
         xs, ys = xs.flatten(), ys.flatten()
         xys = np.stack((xs, ys), axis=1)
-        should_be = np.stack((ys + 50, 250 - xs), axis=1)
-        self.assertTrue((should_be == warp_op.apply_points(xys)).all())
+        should_be = np.stack((ys - 50, 250 - xs), axis=1)
+        self.assertTrue(
+            (should_be == warp_op.apply_points(xys)).all(),
+            (xys, should_be, warp_op.apply_points(xys)),
+        )
 
     def test_serialization(self):
         '''
