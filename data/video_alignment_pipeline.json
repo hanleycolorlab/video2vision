@@ -11,37 +11,24 @@
 	}, {
 		"index": 1,
 		"operator": {
-			"class": "HorizontalFlip"
-		},
-		"edges": [[2, {"in_slot": 0}]]
-	}, {
-		"index": 2,
-		"operator": {
-			"class": "Translation",
-			"shift_x": -130,
-			"shift_y": -120,
+			"class": "Warp",
+			"coe": [[-9.99390827e-01, -3.48994967e-02,  3.75078898e+03],
+				[-3.48994967e-02,  9.99390827e-01, -5.67988933e+01],
+				[ 0.00000000e+00,  0.00000000e+00,  1.00000000e+00]],
 			"output_size": [3840, 2160]
 		},
 		"edges": [[3, {"in_slot": 0}]]
 	}, {
-		"index": 3,
-		"operator": {
-			"class": "Rotate",
-			"angle": -2,
-			"output_size": [3840, 2160]
-		},
-		"edges": [[7, {"in_slot": 0}]]
-	}, {
-		"index": 6,
+		"index": 2,
 		"operator": {
 			"class": "Loader",
 			"path": null,
 			"batch_size": 1,
 			"expected_size": [3840, 2160]
 		},
-		"edges": [[7, {"in_slot": 1}]]
+		"edges": [[3, {"in_slot": 1}]]
 	}, {
-		"index": 7,
+		"index": 3,
 		"operator": {
 			"class": "AutoTemporalAlign",
 			"time_shift_range": [-10, 10],
@@ -49,9 +36,9 @@
 			"bands": [[0, 1, 2], []],
 			"method": "ecc"
 		},
-		"edges": [[8, {"in_slot": 0}]]
+		"edges": [[4, {"in_slot": 0}]]
 	}, {
-		"index": 8,
+		"index": 4,
 		"operator": {
 			"class": "Writer",
 			"path": null,
