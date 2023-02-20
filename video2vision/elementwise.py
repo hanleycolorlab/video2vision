@@ -4,7 +4,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
 import numpy as np
-from scipy.optimize import curve_fit, OptimizeWarning
+# Suppress harmless warning
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore', 'The value of the smallest subnormal')
+    from scipy.optimize import curve_fit, OptimizeWarning
 
 from .operators import Operator, OPERATOR_REGISTRY
 from .utils import _coerce_to_2dim
