@@ -462,66 +462,6 @@ class ResizeTest(unittest.TestCase):
         self.assertTrue((orig_op_image == rest_op_image).all())
 
 
-class TemporalShiftTest(unittest.TestCase):
-    def test_handling(self):
-        '''
-        This tests basic coercion and handling.
-        '''
-        with self.assertRaises(ValueError):
-            v2v.TemporalShift(-1)
-
-        shift_op = v2v.TemporalShift(2)
-
-        with self.assertRaises(ValueError):
-            shift_op({'image': np.arange(48).reshape(4, 4, 3)})
-        with self.assertRaises(ValueError):
-            shift_op({'image': np.arange(48).reshape(4, 4, 2, 3)})
-
-        video_1 = np.random.normal(0, 1, (4, 4, 3, 1)).astype(np.float32)
-        video_2 = np.random.normal(0, 1, (4, 4, 3, 1)).astype(np.float32)
-
-        out_1 = shift_op({'image': video_1, 'dummy': 1})
-        out_2 = shift_op({'image': video_2})
-
-        self.assertEqual(out_1.get('dummy', 0), 1)
-        out_1, out_2 = out_1['image'], out_2['image']
-
-        self.assertEqual(out_1.shape, video_1.shape)
-        self.assertEqual(out_2.shape, video_2.shape)
-
-        self.assertTrue((out_1[:, :, :2] == 0).all())
-        self.assertTrue((out_1[:, :, 2:3] == video_1[:, :, 0:1]).all())
-        self.assertTrue((out_2[:, :, 0:2] == video_1[:, :, 1:3]).all())
-        self.assertTrue((out_2[:, :, 2:3] == video_2[:, :, 0:1]).all())
-
-    def test_apply_points(self):
-        '''
-        Tests the apply_points method.
-        '''
-        shift_op = v2v.TemporalShift(1)
-        # Test apply_points
-        xs, ys = np.meshgrid(np.arange(300), np.arange(200))
-        xs, ys = xs.flatten(), ys.flatten()
-        xys = np.stack((xs, ys), axis=1)
-        self.assertTrue((xys == shift_op.apply_points(xys)).all())
-
-    def test_serialization(self):
-        '''
-        Tests serialization to disk and back.
-        '''
-        shift_op = v2v.TemporalShift(1)
-
-        op_dict = json.loads(json.dumps(shift_op._to_json()))
-        op_class = v2v.OPERATOR_REGISTRY.get(op_dict.pop('class'))
-        restored_op = op_class(**op_dict)
-
-        image = np.random.normal(0, 1, (30, 30, 3, 1))
-        orig_op_image = shift_op({'image': image})['image']
-        rest_op_image = restored_op({'image': image})['image']
-
-        self.assertTrue((orig_op_image == rest_op_image).all())
-
-
 class UBGRtoXYZTest(unittest.TestCase):
     def test_handling(self):
         op = v2v.UBGRtoXYZ()

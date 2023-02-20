@@ -16,8 +16,8 @@ from .utils import _coerce_to_3dim, _coerce_to_4dim, _coerce_to_dict, Registry
 
 __all__ = [
     'Operator', 'ConcatenateOnBands', 'HorizontalFlip', 'LinearMap',
-    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'TemporalShift',
-    'UBGRtoXYZ', 'VerticalFlip',
+    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'UBGRtoXYZ',
+    'VerticalFlip',
 ]
 
 # This provides a registry of operators. This is used when saving and restoring
@@ -395,63 +395,6 @@ class Resize(Operator):
             'class': self.__class__.__name__,
             'scale': self.scale,
             'sampling_mode': self.sampling_mode,
-        }
-
-
-@OPERATOR_REGISTRY.register
-class TemporalShift(Operator):
-    '''
-    Shifts a video forward in time.
-    '''
-    def __init__(self, shift: int):
-        '''
-        Args:
-            shift (int): The number of frames to shift. If positive, shifts the
-            video forward; if negative, shifts it backward.
-        '''
-        if shift < 0:
-            raise ValueError('Shift must be positive')
-        self.shift = shift
-        self.buff = None
-
-    def apply(self, x: Dict) -> Dict:
-        if self.shift == 0:
-            return x
-
-        if x['image'].ndim != 4:
-            raise ValueError(
-                'TemporalShift cannot be applied to single images'
-            )
-
-        w, h, t, c = x['image'].shape
-
-        if t <= self.shift:
-            raise ValueError(
-                'Temporal shift requires shift to be smaller than batch size'
-            )
-
-        # We do a copy because the slice returns a view, keeping a hidden
-        # reference to the original image array which will prevent it from
-        # being garbage-collected.
-        buff = self.buff
-        self.buff = x['image'][:, :, -self.shift:, :].copy()
-        if buff is not None:
-            x['image'] = np.concatenate(
-                (buff, x['image'][:, :, :-self.shift, :]), axis=2
-            )
-        else:
-            pad = ((0, 0), (0, 0), (self.shift, 0), (0, 0))
-            x['image'] = np.pad(x['image'][:, :, :-self.shift], pad)
-
-        return x
-
-    def apply_points(self, pts: np.ndarray) -> np.ndarray:
-        return pts
-
-    def _to_json(self) -> Dict:
-        return {
-            'class': self.__class__.__name__,
-            'shift': self.shift,
         }
 
 
