@@ -3,10 +3,10 @@ import json
 from typing import Callable, List, Optional, Tuple, Union
 
 import cv2
-import video2vision as v2v
 import ipywidgets as widgets
 import numpy as np
 from PIL import Image
+import video2vision as v2v
 
 from crosshairs import SampleSelector
 
@@ -39,9 +39,11 @@ class DisplayBox(widgets.VBox):
 
         images = [r.get_frame(t + s) for r, s in zip(self.loaders, shifts)]
         if self.preprocess is not None:
-            images = self.preprocess(*images)
-        h = max(image.shape[0] for image in images)
-        w = sum(image.shape[1] for image in images)
+            test_images = self.preprocess(*images)
+        else:
+            test_images = images
+        h = max(image.shape[0] for image in test_images)
+        w = sum(image.shape[1] for image in test_images)
         num_frames = min(len(loader) for loader in self.loaders)
         min_t, max_t = -min(shifts), num_frames - max(shifts)
 
@@ -65,6 +67,8 @@ class DisplayBox(widgets.VBox):
     def set_images(self, *images):
         if self.preprocess is not None:
             images = self.preprocess(*images)
+        # Apply gamma scaling to ensure visually correct display
+        images = [gamma_scale(image) for image in images]
 
         x = 0
         for image in images:
@@ -151,6 +155,8 @@ class GhostBox(widgets.VBox):
 
     def set_images(self, image_0, image_1):
         image_0[..., 1] = image_1[..., 1]
+        # Apply gamma scaling to ensure visually correct display
+        image_0 = gamma_scale(image_0)
         image = np.clip(256 * image_0[..., ::-1], 0, 255).astype(np.uint8)
         self.display_image.value = Image.fromarray(image)._repr_png_()
 
@@ -256,6 +262,8 @@ class SelectorBox(widgets.VBox):
     def _prep(self, image: np.ndarray) -> np.ndarray:
         if self.preprocess is not None:
             image = self.preprocess(image)
+        # Apply gamma scaling to ensure visually correct display
+        image = gamma_scale(image)
         self._cached_image = image
 
         # Loader returns in BGR, but SampleSelector expects RGB. Also, we need
@@ -368,3 +376,11 @@ class GuidedSelectorBox(SelectorBox):
         elif (image.ndim == 3) and (image.shape[2] == 1):
             image = image.reshape(*image.shape[:2])
         return np.clip(256 * image, 0, 255).astype(np.uint8)
+
+
+def gamma_scale(image):
+    # Coerce to [0, 1] range
+    pix_min = image.min((0, 1), keepdims=True)
+    pix_max = image.max((0, 1), keepdims=True)
+    image = (image - pix_min) / (pix_max - pix_min)
+    return image ** 2.2
