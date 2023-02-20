@@ -14,6 +14,13 @@ import numpy as np
 import video2vision as v2v
 
 
+class BaseClassTests(unittest.TestCase):
+    def test_hold_token(self):
+        op = v2v.Operator()
+        token = v2v.operators.HoldToken()
+        self.assertTrue(isinstance(op(token), v2v.operators.HoldToken))
+
+
 class ConcatenateOnBandsTest(unittest.TestCase):
     def test_handling(self):
         '''

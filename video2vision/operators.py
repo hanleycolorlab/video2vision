@@ -90,6 +90,9 @@ class Operator:
     num_inputs = 1
 
     def __call__(self, *xs) -> Dict:
+        if any(isinstance(x, HoldToken) for x in xs):
+            return HoldToken()
+
         # copy performs a shallow copy. That is, if x is a dictionary, it
         # creates a new dictionary, but the values are all the same as the
         # original values. This avoids copying images - which would be wasteful
@@ -111,6 +114,17 @@ class Operator:
 
     def apply_points(self, pts: np.ndarray) -> np.ndarray:
         raise RuntimeError()
+
+    def reset(self):
+        '''
+        This method is used to notify an :class:`Operator` that the pipeline is
+        being reset to the beginning. This is usually used when
+        :class:`AutoOperator` s need to process multiple batches before
+        determining their coefficients. This does not indicate a hard reset:
+        an :class:`AutoOperator` that *has* determined its coefficients should
+        not discard them.
+        '''
+        return
 
 
 @OPERATOR_REGISTRY.register
@@ -517,3 +531,13 @@ def load_operator(x: Union[str, Dict]) -> Operator:
 
     op_cls = OPERATOR_REGISTRY.get(x.pop('class'))
     return op_cls(**x)
+
+
+class HoldToken:
+    '''
+    This is a dummy class returned by an :class:`Operator` to indicate that the
+    operator is not ready to proceed. This is usually used by
+    :class:`AutoOperator` s that have not yet received enough input to deterine
+    their coefficients. All downstream operators then return a
+    :class:`HoldToken` as well.
+    '''
