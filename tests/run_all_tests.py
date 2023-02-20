@@ -1,4 +1,7 @@
 import unittest
+import warnings
+# Raise all warnings as errors
+warnings.filterwarnings('error')
 
 from auto_operator_tests import *
 from elementwise_tests import *
