@@ -328,7 +328,7 @@ def read_jazirrad_file(path: str) -> Tuple[np.ndarray, np.ndarray]:
     # contents is now a tab-separated with four columns. The 0th is wavelength
     # and the second is the spectral response in uW / cm^2 nm.
     contents = list(csv.reader(contents, dialect='excel-tab'))
-    wavelengths, _, response, _ = zip(*contents)
+    wavelengths, _, _, response = zip(*contents)
     wavelengths = np.array([float(w) for w in wavelengths], dtype=np.float32)
     response = np.array([float(r) for r in response], dtype=np.float32)
 
