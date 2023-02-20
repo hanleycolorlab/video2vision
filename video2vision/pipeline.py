@@ -10,7 +10,7 @@ import numpy as np
 from .io import Loader, OutOfInputs, _read_write_from_to_buffer, Writer
 from .operators import Operator, OPERATOR_REGISTRY
 
-__all__ = ['load_pipeline', 'Pipeline']
+__all__ = ['load_pipeline', 'Pipeline', 'ResetPipeline']
 
 
 class Pipeline(nx.DiGraph):
@@ -179,6 +179,26 @@ class Pipeline(nx.DiGraph):
         for writer in self.get_writers():
             writer.release()
 
+    def _reset_all_inputs(self):
+        '''
+        Convenience method to reset all inputs of all operators.
+        '''
+        for op in self.nodes.values():
+            self._reset_inputs(op)
+
+    def _reset_all_operators(self):
+        '''
+        Convenience method to call the reset method on all operators.
+        '''
+        for op in self.nodes.values():
+            op['operator'].reset()
+
+    def _reset_inputs(self, op):
+        '''
+        Convenience method to reset the inputs of a specific operator.
+        '''
+        op['inputs'] = [None] * op['operator'].num_inputs
+
     def run(self) -> Dict:
         '''
         This runs the :class:`Pipeline` until it runs out of input images. It
@@ -188,8 +208,7 @@ class Pipeline(nx.DiGraph):
         op_times = Counter()
 
         # Add empty input slots
-        for node in self.nodes.values():
-            node['inputs'] = [None] * node['operator'].num_inputs
+        self._reset_all_inputs()
 
         # The topological sort returns an iterator over the node
         # indices ordered so that we will not reach any node until we
@@ -215,8 +234,17 @@ class Pipeline(nx.DiGraph):
                         )
                     op_name = op['operator'].__class__.__name__
                     op_start_time = time.perf_counter()
+
                     # Run the operator on the inputs.
-                    out = op['operator'](*op.pop('inputs'))
+                    try:
+                        out = op['operator'](*op.pop('inputs'))
+                    except ResetPipeline:
+                        # Clear all inputs prior to returning to the start of
+                        # the for loop.
+                        self._reset_all_operators()
+                        self._reset_all_inputs()
+                        break
+
                     op_times[op_name] += (time.perf_counter() - op_start_time)
 
                     # Place the output into the corresponding input slots of
@@ -225,7 +253,7 @@ class Pipeline(nx.DiGraph):
                         in_slot = self.edges[op_idx, down_op_idx]['in_slot']
                         self.nodes[down_op_idx]['inputs'][in_slot] = out
                     # Reset the inputs to this operator.
-                    op['inputs'] = [None] * op['operator'].num_inputs
+                    self._reset_inputs(op)
 
         self.release_writers()
 
@@ -312,3 +340,12 @@ class Pipeline(nx.DiGraph):
 
 
 load_pipeline = Pipeline.load
+
+
+class ResetPipeline(Exception):
+    '''
+    This exception should be raised by :class:`Operator` s that want to reset
+    the :class:`Pipeline` and reprocess all inputs. This is generally used by
+    :class:`AutoOperator` s that need multiple batches to determine their
+    correct coefficients.
+    '''

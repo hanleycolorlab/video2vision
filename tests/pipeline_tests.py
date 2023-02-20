@@ -1,11 +1,30 @@
 import os
 import tempfile
+from typing import Dict
 import unittest
 import warnings
 
 import numpy as np
 
 import video2vision as v2v
+
+
+class ResetCounterOperator(v2v.Operator):
+    def __init__(self):
+        self.num_resets = 0
+
+    def apply(self, x: Dict) -> Dict:
+        return x
+
+    def reset(self):
+        self.num_resets += 1
+
+
+class ResetTriggerOperator(ResetCounterOperator):
+    def apply(self, x: Dict):
+        if self.num_resets == 0:
+            raise v2v.ResetPipeline()
+        return x
 
 
 class PipelineTest(unittest.TestCase):
@@ -205,6 +224,50 @@ class PipelineTest(unittest.TestCase):
             pipe.run()
 
             self._check_outputs(temp_path)
+
+    def test_reset_all_inputs(self):
+        with tempfile.TemporaryDirectory() as temp_path:
+            pipe = self._make_pipeline(temp_path, batch_size=1)
+            pipe._reset_all_inputs()
+            pipe.nodes[1]['inputs'][0] = {'image': 'test'}
+            pipe._reset_all_inputs()
+            self.assertTrue(all(x is None for x in pipe.nodes[1]['inputs']))
+
+    def test_reset_input(self):
+        with tempfile.TemporaryDirectory() as temp_path:
+            pipe = self._make_pipeline(temp_path, batch_size=1)
+            pipe._reset_all_inputs()
+            pipe.nodes[1]['inputs'][0] = {'image': 'test'}
+            pipe._reset_inputs(pipe.nodes[1])
+            self.assertTrue(all(x is None for x in pipe.nodes[1]['inputs']))
+
+    def test_reset_operators(self):
+        op = ResetCounterOperator()
+        pipe = v2v.Pipeline()
+        pipe.add_operator(op, idx=0)
+        self.assertEqual(op.num_resets, 0)
+        pipe._reset_all_operators()
+        self.assertEqual(op.num_resets, 1)
+
+    def test_raise_resetpipeline_exception(self):
+        with tempfile.TemporaryDirectory() as temp_path:
+            in_root, _, _ = self._make_images(temp_path)
+            pipe = v2v.Pipeline()
+            loader_idx = pipe.add_operator(v2v.Loader(in_root, 1))
+            counter = ResetCounterOperator()
+            count_idx = pipe.add_operator(counter)
+            pipe.add_edge(loader_idx, count_idx, in_slot=0)
+            trigger = ResetTriggerOperator()
+            reset_idx = pipe.add_operator(trigger)
+            pipe.add_edge(count_idx, reset_idx, in_slot=0)
+
+            self.assertEqual(counter.num_resets, 0)
+            self.assertEqual(trigger.num_resets, 0)
+
+            pipe.run()
+
+            self.assertEqual(counter.num_resets, 1)
+            self.assertEqual(trigger.num_resets, 1)
 
 
 if __name__ == '__main__':
