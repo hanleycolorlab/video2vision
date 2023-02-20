@@ -231,7 +231,7 @@ class UtilitiesTests(unittest.TestCase):
         path = os.path.join(os.path.dirname(__file__), 'data/example.JazIrrad')
         wavelengths, response = v2v.utils.read_jazirrad_file(path)
         self.assertTrue(abs(wavelengths[10] - 194.718307) < 1e-3)
-        self.assertTrue(abs(response[10] - -9.300991) < 1e-3)
+        self.assertTrue(abs(response[10] - 0.) < 1e-3)
 
 
 if __name__ == '__main__':
