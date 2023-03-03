@@ -26,6 +26,16 @@ __all__ = [
 OPERATOR_REGISTRY = Registry()
 
 
+class HoldToken:
+    '''
+    This is a dummy class returned by an :class:`Operator` to indicate that the
+    operator is not ready to proceed. This is usually used by
+    :class:`AutoOperator` s that have not yet received enough input to deterine
+    their coefficients. All downstream operators then return a
+    :class:`HoldToken` as well.
+    '''
+
+
 class Operator:
     '''
     This is the base class for an operator. To add a new operator, subclass
@@ -89,7 +99,7 @@ class Operator:
     '''
     num_inputs = 1
 
-    def __call__(self, *xs) -> Dict:
+    def __call__(self, *xs) -> Union[Dict, HoldToken]:
         if any(isinstance(x, HoldToken) for x in xs):
             return HoldToken()
 
@@ -474,13 +484,3 @@ def load_operator(x: Union[str, Dict]) -> Operator:
 
     op_cls = OPERATOR_REGISTRY.get(x.pop('class'))
     return op_cls(**x)
-
-
-class HoldToken:
-    '''
-    This is a dummy class returned by an :class:`Operator` to indicate that the
-    operator is not ready to proceed. This is usually used by
-    :class:`AutoOperator` s that have not yet received enough input to deterine
-    their coefficients. All downstream operators then return a
-    :class:`HoldToken` as well.
-    '''
