@@ -123,8 +123,8 @@ class CoercionTests(unittest.TestCase):
 
 class UtilitiesTests(unittest.TestCase):
     def test_detect_motion(self):
-        mask = np.ones((100, 100), dtype=bool)
-        mask[0:2, :] = False
+        mask = np.ones((100, 100), dtype=np.uint8)
+        mask[0:2, :] = 0
 
         images = np.random.uniform(0, 0.01, (100, 100, 10, 3))
         for t in range(5, 10):
@@ -243,23 +243,23 @@ class UtilitiesTests(unittest.TestCase):
         dist = np.sqrt(((pred_markers - marker_pts)**2).sum(2))
         self.assertTrue(dist.max() < 50)
 
-    def test_median_across_time(self):
+    def test_extract_background(self):
         # Check 4-dim.
         image = np.random.uniform(0, 1, (10, 10, 4, 3)).astype(np.float32)
         mask = np.ones((10, 10), dtype=bool)
         image = {'image': image, 'mask': mask}
-        out = v2v.utils._median_across_time(image)
+        out = v2v.utils._extract_background(image)
         # Verify it's not the same dictionary
         image['a'] = 1
         self.assertEqual(out.keys(), {'image', 'mask'})
         self.assertEqual(out['image'].shape, (10, 10, 1, 3))
-        should_be = np.median(image['image'], axis=2, keepdims=True)
+        should_be = np.mean(image['image'], axis=2, keepdims=True)
         self.assertTrue((np.abs(out['image'] - should_be) < 1e-2).all())
 
         # Check 3-dim.
         image = np.random.uniform(0, 1, (10, 10, 3)).astype(np.float32)
         image = {'image': image}
-        out = v2v.utils._median_across_time(image)
+        out = v2v.utils._extract_background(image)
         self.assertEqual(out['image'].shape, (10, 10, 3))
         self.assertTrue((np.abs(out['image'] - image['image']) < 1e-2).all())
 

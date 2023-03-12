@@ -233,7 +233,7 @@ class Pipeline(nx.DiGraph):
                             f'; pipeline graph must be incomplete.'
                         )
                     op_name = op['operator'].__class__.__name__
-                    op_start_time = time.perf_counter()
+                    op_start = time.perf_counter()
 
                     # Run the operator on the inputs.
                     try:
@@ -241,11 +241,12 @@ class Pipeline(nx.DiGraph):
                     except ResetPipeline:
                         # Clear all inputs prior to returning to the start of
                         # the for loop.
+                        op_times[op_name] += (time.perf_counter() - op_start)
                         self._reset_all_operators()
                         self._reset_all_inputs()
                         break
 
-                    op_times[op_name] += (time.perf_counter() - op_start_time)
+                    op_times[op_name] += (time.perf_counter() - op_start)
 
                     # Place the output into the corresponding input slots of
                     # operators downstream of this operator.

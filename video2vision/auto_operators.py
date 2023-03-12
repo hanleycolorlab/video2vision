@@ -5,7 +5,7 @@ images it recieves to calculate an alignment, then reuses that alignment for
 all of the remaining batches.
 '''
 from copy import copy
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -13,14 +13,19 @@ import numpy as np
 from .elementwise import build_linearizer
 from .operators import (
     ConcatenateOnBands,
+    HoldToken,
     Operator,
     OPERATOR_REGISTRY,
 )
+from .pipeline import ResetPipeline
 from .utils import (
     _coerce_to_4dim,
     _evaluate_ecc_for_warp,
+    detect_motion,
+    _extract_background,
     extract_samples,
-    locate_aruco_markers
+    locate_aruco_markers,
+    _prep_for_motion_detection,
 )
 from .warp import Warp
 
@@ -426,21 +431,23 @@ class AutoLinearize(AutoOperator):
 @OPERATOR_REGISTRY.register
 class AutoTemporalAlign(AutoAlign, AutoOperator):
     '''
-    The :class:`AutoTemporalAlign` takes in two videos and uses the ECC method
-    to find both a temporal shift and a homography operation that aligns them.
-    It then replaces itself with a :class:`TemporalShift` and :class:`Warp`
-    operator that implements that alignment. It expects its 0th input to
-    provide the video to be aligned - the source video - and the 1st input to
-    provide the video to align to - the control video.
-
-    This requires a good coarse alignment to work.
+    The :class:`AutoTemporalAlign` takes in two videos and attempts to align
+    them both spatially and temporally. It first looks for a stack of frames
+    that have sufficient motion in them to make a valid temporal match. It then
+    compares a range of possible temporal shifts to look for the optimal shift.
+    For each shift, it uses either the ECC method or the ARUCO method to find
+    an optimal spatial alignment to go with the temporal shift. Then, it
+    selects the optimal temporal alignment based on the ECC value. This
+    requires a good coarse alignment to work.
     '''
     def __init__(self, time_shift_range: Tuple[int, int],
                  max_iterations: int = 5000, eps: float = 1e-4,
                  sampling_mode: int = cv2.INTER_LINEAR,
                  num_votes: int = 1, bands: Optional[List[List[int]]] = None,
                  mask: Optional[Tuple[int, int, int, int]] = None,
-                 method: str = 'any', coe: Optional[np.ndarray] = None,
+                 method: str = 'any', motion_area_threshold: float = 0.005,
+                 motion_difference_threshold: float = 0.1,
+                 coe: Optional[np.ndarray] = None,
                  output_size: Optional[Tuple[int, int]] = None,
                  time_shift: Optional[int] = None):
         '''
@@ -471,6 +478,12 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             method (str): Method to use. Choices: 'any' (defaults to ARUCO
             markers if available), 'aruco', 'ecc'.
 
+            motion_area_threshold (float): The area_threshold value to use in
+            the :func:`detect_motion` function.
+
+            motion_difference_threshold (float): The difference_threshold value
+            to use in the :func:`detect_motion` function.
+
             coe (optional, :class:`numpy.ndarray`): The warp used in the
             alignment. This is ordinarily calculated from the first batch, but
             we allow it to be passed as an argument so that a fit
@@ -496,13 +509,22 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         )
         self.time_shift_range = time_shift_range
         self.time_shift = time_shift
+        self.motion_area_threshold = motion_area_threshold
+        self.motion_difference_threshold = motion_difference_threshold
         self.buff = None
         self.buff_names = None
+        self.source_background = None
+        self.control_background = None
+        # This is used to track whether a batch has been skipped, and therefore
+        # whether the operator needs to raise a ResetPipeline exception when it
+        # finds the correct alignment.
+        self.skipped_batch = False
 
-    def apply(self, source: Dict, control: Dict) -> Dict:
+    def apply(self, source: Dict, control: Dict) -> Union[Dict, HoldToken]:
         if self.coe is not None:
             source, control = self._shift(source, control, self.time_shift)
-
+            # This is in place to handle when UV, VIS videos have different
+            # length.
             with _coerce_to_4dim(source), _coerce_to_4dim(control):
                 n_f = min(source['image'].shape[2], control['image'].shape[2])
                 source['image'] = source['image'][:, :, :n_f, :]
@@ -510,6 +532,65 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
 
             return super().apply(source, control)
 
+        # Check for motion prior to actually running the alignment
+        if self.source_background is None:
+            self.source_background = _prep_for_motion_detection(
+                _extract_background(source)
+            )
+        if self.control_background is None:
+            self.control_background = _prep_for_motion_detection(
+                _extract_background(control)
+            )
+
+        source_motion = self._detect_motion(source, self.source_background)
+        control_motion = self._detect_motion(control, self.control_background)
+
+        # We need to ensure that, under all possible time shifts, at least some
+        # frames with motion will be available to compare. If they do not, we
+        # return a HoldToken, which aborts the graph downstream of this
+        # operation.
+        for shift in range(*self.time_shift_range):
+            if shift == 0:
+                is_moving = source_motion & control_motion
+            elif shift > 0:
+                is_moving = source_motion[:-shift] & control_motion[shift:]
+            elif shift < 0:
+                is_moving = source_motion[-shift:] & control_motion[:shift]
+            if not is_moving.any():
+                self.skipped_batch = True
+                return HoldToken()
+
+        # If we go this far, then we have adequate motion and may proceed.
+        # Let's also discard those backgrounds to save memory while we're at
+        # it.
+        self.source_background = self.control_background = None
+        out = self._find_alignment(source, control)
+
+        # If we've skipped a batch, then reset the pipeline and process
+        # everything over again.
+        if self.skipped_batch:
+            raise ResetPipeline()
+
+        return out
+
+    def _detect_motion(self, images, background):
+        '''
+        This is a convenience method wrapping the :func:`detect_motion`
+        function.
+        '''
+        return detect_motion(
+            images,
+            area_threshold=self.motion_area_threshold,
+            difference_threshold=self.motion_difference_threshold,
+            background=background,
+        )
+
+    def _find_alignment(self, source: Dict, control: Dict) -> Dict:
+        '''
+        This finds the spatial and temporal alignment between the source and
+        controls, and returns the aligned outputs. This assumes that adequate
+        motion is present in both.
+        '''
         best_ecc = -float('inf')
 
         # Get the number of frames available.
@@ -529,7 +610,7 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
 
             # This can raise a RuntimeError if we fail to find an alignment.
             try:
-                warped_source = self._find_alignment(
+                warped_source = super()._find_alignment(
                     shifted_source, shifted_control
                 )
             except RuntimeError:
@@ -547,6 +628,14 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         self.coe, self.time_shift = best_coe, best_shift
 
         return self.apply(source, control)
+
+    def reset(self):
+        self.buff = None
+        self.buff_names = None
+        self.source_background = None
+        self.control_background = None
+        self.skipped_batch = False
+        return super().reset()
 
     def _shift(self, source: Dict, control: Dict, shift: int = 0,
                no_buffer: bool = False):
@@ -602,6 +691,10 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
 
     def _to_json(self) -> Dict:
         rtn = super()._to_json()
-        rtn['time_shift_range'] = self.time_shift_range
-        rtn['time_shift'] = self.time_shift
+        rtn.update({
+            'motion_area_threshold': self.motion_area_threshold,
+            'motion_difference_threshold': self.motion_difference_threshold,
+            'time_shift_range': self.time_shift_range,
+            'time_shift': self.time_shift,
+        })
         return rtn

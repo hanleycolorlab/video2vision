@@ -185,7 +185,7 @@ def detect_motion(image: Dict, area_threshold: float = 0.005,
                 mask &= background['mask']
 
         if background is None:
-            background = _prep_for_motion_detection(_median_across_time(image))
+            background = _prep_for_motion_detection(_extract_background(image))
 
         # images will be in shape HWT1 after preparation.
         image = _prep_for_motion_detection(image['image'])
@@ -200,15 +200,35 @@ def detect_motion(image: Dict, area_threshold: float = 0.005,
 
             for t in range(image['image'].shape[2]):
                 diff = cv2.absdiff(
-                    image['image'][:, :, t, :],
-                    background['image'][:, :, 0, :]
+                    image['image'][:, :, t, 0],
+                    background['image'][:, :, 0, 0]
                 )
                 if mask is not None:
-                    diff = diff[mask]
+                    # mask is of type uint8, and needs to be cast or it will be
+                    # interpreted as indices instead of a mask
+                    diff = diff[mask.astype(np.bool_)]
                 diff = (diff > difference_threshold).mean()
                 motion.append(diff > area_threshold)
 
     return np.array(motion)
+
+
+def _extract_background(image: Dict) -> Dict:
+    '''
+    Estimates the backgroud across time of a batch of images.
+    '''
+    # We're going to modify the values of the dictionary, so ensure it won't
+    # flow back upstream.
+    image = copy(_coerce_to_dict(image))
+
+    with _coerce_to_4dim(image):
+        # For small time dimensions, the median is less stable than the mean.
+        if image['image'].shape[2] >= 8:
+            image['image'] = np.median(image['image'], axis=2, keepdims=True)
+        else:
+            image['image'] = np.mean(image['image'], axis=2, keepdims=True)
+
+    return image
 
 
 def extract_samples(image: np.ndarray, points: np.ndarray, width: int = 10) \
@@ -371,20 +391,6 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
     else:
         found_ids = [np.array(ids) for ids in found_ids]
         return np.array(ts), corners, found_ids
-
-
-def _median_across_time(image: Dict) -> Dict:
-    '''
-    Calculates the mean across time of a batch of images.
-    '''
-    # We're going to modify the values of the dictionary, so ensure it won't
-    # flow back upstream.
-    image = copy(_coerce_to_dict(image))
-
-    with _coerce_to_4dim(image):
-        image['image'] = np.median(image['image'], axis=2, keepdims=True)
-
-    return image
 
 
 def _prep_for_motion_detection(image: Dict) -> Dict:
