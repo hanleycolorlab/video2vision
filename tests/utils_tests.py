@@ -122,6 +122,22 @@ class CoercionTests(unittest.TestCase):
 
 
 class UtilitiesTests(unittest.TestCase):
+    def test_detect_motion(self):
+        mask = np.ones((100, 100), dtype=np.uint8)
+        mask[0:2, :] = 0
+
+        images = np.random.uniform(0, 0.01, (100, 100, 10, 3))
+        for t in range(5, 10):
+            w, h = (t - 5) * 10, 2 * (t - 4)
+            images[:h, :w, t, :] += 0.9
+
+        images = {'image': images, 'mask': mask}
+
+        out = v2v.utils.detect_motion(images)
+        should_be = np.array(([False] * 7) + ([True] * 3))
+
+        self.assertTrue((out == should_be).all(), out)
+
     def test_extract_samples(self):
         # First, image. We choose the size of the image so we can test the
         # out-of-bounds handling.
@@ -226,6 +242,58 @@ class UtilitiesTests(unittest.TestCase):
         pred_markers = pred_markers.reshape(4, 4, 2)
         dist = np.sqrt(((pred_markers - marker_pts)**2).sum(2))
         self.assertTrue(dist.max() < 50)
+
+    def test_extract_background(self):
+        # Check 4-dim.
+        image = np.random.uniform(0, 1, (10, 10, 4, 3)).astype(np.float32)
+        mask = np.ones((10, 10), dtype=bool)
+        image = {'image': image, 'mask': mask}
+        out = v2v.utils._extract_background(image)
+        # Verify it's not the same dictionary
+        image['a'] = 1
+        self.assertEqual(out.keys(), {'image', 'mask'})
+        self.assertEqual(out['image'].shape, (10, 10, 1, 3))
+        should_be = np.mean(image['image'], axis=2, keepdims=True)
+        self.assertTrue((np.abs(out['image'] - should_be) < 1e-2).all())
+
+        # Check 3-dim.
+        image = np.random.uniform(0, 1, (10, 10, 3)).astype(np.float32)
+        image = {'image': image}
+        out = v2v.utils._extract_background(image)
+        self.assertEqual(out['image'].shape, (10, 10, 3))
+        self.assertTrue((np.abs(out['image'] - image['image']) < 1e-2).all())
+
+    def test_prep_for_motion_detection(self):
+        for n_c in [1, 2, 3]:
+            image = np.zeros((10, 10, n_c), dtype=np.float32)
+            image[5, 5, :] = 1.
+            mask = np.ones((10, 10), dtype=bool)
+            image = {'image': image, 'mask': mask}
+
+            out = v2v.utils._prep_for_motion_detection(image)
+
+            # First, check that this is a different dictionary, and that the
+            # image is not the same array.
+            image['a'] = 1
+            self.assertEqual(out.keys(), {'image', 'mask'})
+            # If they're the same array, this will trigger an assert below when
+            # we check the value of out['image']
+            image['image'][5, 5, :] = 1.
+
+            # Next, check that the image has been converted to grayscale
+            self.assertEqual(out['image'].shape, (10, 10, 1))
+
+            # And check the value of the image
+            should_be = np.zeros((10, 10, 1), dtype=np.float32)
+            should_be[3:8, 3:8, 0] = np.array([
+                [ 1.,  4.,  6.,  4.,  1.],
+                [ 4., 16., 24., 16.,  4.],
+                [ 6., 24., 36., 24.,  6.],
+                [ 4., 16., 24., 16.,  4.],
+                [ 1.,  4.,  6.,  4.,  1.]
+            ])
+            should_be /= 256
+            self.assertTrue((np.abs(out['image'] - should_be) < 1e-4).all())
 
     def test_read_jazirrad(self):
         path = os.path.join(os.path.dirname(__file__), 'data/example.JazIrrad')

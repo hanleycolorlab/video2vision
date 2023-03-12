@@ -16,14 +16,24 @@ from .utils import _coerce_to_3dim, _coerce_to_4dim, _coerce_to_dict, Registry
 
 __all__ = [
     'Operator', 'ConcatenateOnBands', 'HorizontalFlip', 'LinearMap',
-    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'TemporalShift',
-    'UBGRtoXYZ', 'VerticalFlip',
+    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'UBGRtoXYZ',
+    'VerticalFlip',
 ]
 
 # This provides a registry of operators. This is used when saving and restoring
 # Operators, since it allows us to map from operator name to the operator
 # class.
 OPERATOR_REGISTRY = Registry()
+
+
+class HoldToken:
+    '''
+    This is a dummy class returned by an :class:`Operator` to indicate that the
+    operator is not ready to proceed. This is usually used by
+    :class:`AutoOperator` s that have not yet received enough input to deterine
+    their coefficients. All downstream operators then return a
+    :class:`HoldToken` as well.
+    '''
 
 
 class Operator:
@@ -89,7 +99,10 @@ class Operator:
     '''
     num_inputs = 1
 
-    def __call__(self, *xs) -> Dict:
+    def __call__(self, *xs) -> Union[Dict, HoldToken]:
+        if any(isinstance(x, HoldToken) for x in xs):
+            return HoldToken()
+
         # copy performs a shallow copy. That is, if x is a dictionary, it
         # creates a new dictionary, but the values are all the same as the
         # original values. This avoids copying images - which would be wasteful
@@ -111,6 +124,17 @@ class Operator:
 
     def apply_points(self, pts: np.ndarray) -> np.ndarray:
         raise RuntimeError()
+
+    def reset(self):
+        '''
+        This method is used to notify an :class:`Operator` that the pipeline is
+        being reset to the beginning. This is usually used when
+        :class:`AutoOperator` s need to process multiple batches before
+        determining their coefficients. This does not indicate a hard reset:
+        an :class:`AutoOperator` that *has* determined its coefficients should
+        not discard them.
+        '''
+        return
 
 
 @OPERATOR_REGISTRY.register
@@ -381,63 +405,6 @@ class Resize(Operator):
             'class': self.__class__.__name__,
             'scale': self.scale,
             'sampling_mode': self.sampling_mode,
-        }
-
-
-@OPERATOR_REGISTRY.register
-class TemporalShift(Operator):
-    '''
-    Shifts a video forward in time.
-    '''
-    def __init__(self, shift: int):
-        '''
-        Args:
-            shift (int): The number of frames to shift. If positive, shifts the
-            video forward; if negative, shifts it backward.
-        '''
-        if shift < 0:
-            raise ValueError('Shift must be positive')
-        self.shift = shift
-        self.buff = None
-
-    def apply(self, x: Dict) -> Dict:
-        if self.shift == 0:
-            return x
-
-        if x['image'].ndim != 4:
-            raise ValueError(
-                'TemporalShift cannot be applied to single images'
-            )
-
-        w, h, t, c = x['image'].shape
-
-        if t <= self.shift:
-            raise ValueError(
-                'Temporal shift requires shift to be smaller than batch size'
-            )
-
-        # We do a copy because the slice returns a view, keeping a hidden
-        # reference to the original image array which will prevent it from
-        # being garbage-collected.
-        buff = self.buff
-        self.buff = x['image'][:, :, -self.shift:, :].copy()
-        if buff is not None:
-            x['image'] = np.concatenate(
-                (buff, x['image'][:, :, :-self.shift, :]), axis=2
-            )
-        else:
-            pad = ((0, 0), (0, 0), (self.shift, 0), (0, 0))
-            x['image'] = np.pad(x['image'][:, :, :-self.shift], pad)
-
-        return x
-
-    def apply_points(self, pts: np.ndarray) -> np.ndarray:
-        return pts
-
-    def _to_json(self) -> Dict:
-        return {
-            'class': self.__class__.__name__,
-            'shift': self.shift,
         }
 
 

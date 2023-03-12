@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from copy import copy
 import csv
 from math import floor, isnan
 from statistics import mean
@@ -10,7 +11,8 @@ import numpy as np
 _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
-    'extract_samples', 'locate_aruco_markers', 'read_jazirrad_file'
+    'detect_motion', 'extract_samples', 'locate_aruco_markers',
+    'read_jazirrad_file'
 ]
 
 
@@ -141,6 +143,92 @@ def _coerce_to_mask(mask: Any) -> np.ndarray:
     elif mask.dtype != np.uint8:
         raise ValueError(f'mask dtype {mask.dtype} not supported')
     return mask
+
+
+def detect_motion(image: Dict, area_threshold: float = 0.005,
+                  difference_threshold: float = 0.1,
+                  background: Optional[Dict] = None) -> np.ndarray:
+    '''
+    Detects motion in a stack of frames, returning a boolean mask of which
+    frames contain movement. The algorithm works by looking for changes from
+    background in absolute magnitude:
+
+        1. Convert the image to greyscale.
+        2. Apply a Gaussian blur.
+        3. Calculate the absolute difference in pixel values between the image
+           and a background frame.
+        4. Calculate the percentage of pixels where the absolute difference
+           exceeds a specified threshold.
+        5. The image is considered to show motion if the percentage exceeds an
+           area threshold.
+
+    If the background is not supplied, it is calculated by averaging the frames
+    in the stack.
+
+    Args:
+        image (dict): The images to detect motion in.
+        area_threshold (float): Threshold for the minimum percentage of area
+        that must show an absolute difference exceeding the threshold in order
+        to declare motion.
+        difference_threshold (float): Threshold for the absolute difference to
+        declare a pixel as showing motion.
+        background (optional, dict): The background.
+    '''
+    with _coerce_to_4dim(image):
+        # Find mask. We will avoid checking for motion in areas which are
+        # masked out.
+        mask = image.get('mask', None)
+        if (background is not None) and 'mask' in background:
+            if mask is None:
+                mask = background['mask']
+            else:
+                mask &= background['mask']
+
+        if background is None:
+            background = _prep_for_motion_detection(_extract_background(image))
+
+        # images will be in shape HWT1 after preparation.
+        image = _prep_for_motion_detection(image['image'])
+
+        motion = []
+        with _coerce_to_4dim(background):
+            # Confirm background has only one frame
+            if background['image'].shape[2] != 1:
+                raise ValueError(
+                    f"Background has shape {background['image'].shape}"
+                )
+
+            for t in range(image['image'].shape[2]):
+                diff = cv2.absdiff(
+                    image['image'][:, :, t, 0],
+                    background['image'][:, :, 0, 0]
+                )
+                if mask is not None:
+                    # mask is of type uint8, and needs to be cast or it will be
+                    # interpreted as indices instead of a mask
+                    diff = diff[mask.astype(np.bool_)]
+                diff = (diff > difference_threshold).mean()
+                motion.append(diff > area_threshold)
+
+    return np.array(motion)
+
+
+def _extract_background(image: Dict) -> Dict:
+    '''
+    Estimates the backgroud across time of a batch of images.
+    '''
+    # We're going to modify the values of the dictionary, so ensure it won't
+    # flow back upstream.
+    image = copy(_coerce_to_dict(image))
+
+    with _coerce_to_4dim(image):
+        # For small time dimensions, the median is less stable than the mean.
+        if image['image'].shape[2] >= 8:
+            image['image'] = np.median(image['image'], axis=2, keepdims=True)
+        else:
+            image['image'] = np.mean(image['image'], axis=2, keepdims=True)
+
+    return image
 
 
 def extract_samples(image: np.ndarray, points: np.ndarray, width: int = 10) \
@@ -303,6 +391,50 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
     else:
         found_ids = [np.array(ids) for ids in found_ids]
         return np.array(ts), corners, found_ids
+
+
+def _prep_for_motion_detection(image: Dict) -> Dict:
+    '''
+    Applies pre-processing steps prior to motion detection.
+    '''
+    # We're going to modify the values of the dictionary, so ensure it won't
+    # flow back upstream.
+    image = copy(_coerce_to_dict(image))
+
+    # Convert to greyscale. We need to make sure we end up with a new array out
+    # of this, as we're going to modify image['image'] in-place after this.
+    if image['image'].shape[-1] == 3:
+        with _coerce_to_2dim(image):
+            # This function requires an input of shape HW3, and returns an
+            # output of shape HW. We convert the image to shape (HWT)13, so it
+            # returns an output of shape (HWT)1, which then becomes HWT1 when
+            # we exit the context.
+            image['image'] = cv2.cvtColor(
+                image['image'].reshape(-1, 1, 3), cv2.COLOR_BGR2GRAY
+            )
+    elif image['image'].shape[-1] == 1:
+        image['image'] = image['image'].copy()
+    else:
+        image['image'] = image['image'].mean(2, keepdims=True)
+
+    # Apply Gaussian blur in place.
+    with _coerce_to_4dim(image):
+        # We want to avoid a copy from a stack. However, cv2.GaussianBlur
+        # requires that its out argument must be in contiguous arrangement.
+        dst = np.empty(
+            tuple(image['image'].shape[i] for i in [2, 0, 1, 3]),
+            dtype=np.float32
+        )
+        for t in range(image['image'].shape[2]):
+            cv2.GaussianBlur(
+                image['image'][:, :, t, :],
+                dst=dst[t, :, :, :],
+                ksize=(5, 5),
+                sigmaX=0,
+            )
+        image['image'] = np.rollaxis(dst, 0, 3)
+
+    return image
 
 
 def read_jazirrad_file(path: str) -> Tuple[np.ndarray, np.ndarray]:

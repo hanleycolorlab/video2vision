@@ -458,10 +458,10 @@ class AutoTemporalAlignTest(unittest.TestCase):
         for x, c in zip([64, 32, 16, 8, 4], colors):
             image[x:-x, x:-x, :] = c
 
-        return image
+        return image / 256
 
     def test_handling(self):
-        align_op = v2v.AutoTemporalAlign((-1, 2), bands=[[0, 1, 2], []])
+        align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
         image = self._build_image()
         data_dict = {
@@ -473,7 +473,7 @@ class AutoTemporalAlignTest(unittest.TestCase):
         coe = cv2.getRotationMatrix2D(angle=1.2, center=(64, 64), scale=1)
         warped_image = cv2.warpAffine(image, coe, (128, 128))
         coe = np.concatenate((coe, np.array([[0, 0, 1.]])), axis=0)
-        warped_image = np.stack((warped_image, warped_image), axis=2)
+        warped_image = np.stack((warped_image, warped_image + 0.2), axis=2)
         # Include dummy value to test it's preserved
         warped_dict = {
             'image': warped_image,
@@ -491,7 +491,7 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertEqual(align_op.time_shift, 1)
         self.assertEqual(align_op.buff.shape, (128, 128, 1, 3))
         self.assertEqual(align_op.buff_names, ['d'])
-        self.assertTrue((align_op.buff == warped_image[:, :, 0:1]).all())
+        self.assertTrue((align_op.buff == warped_dict['image'][:, :, 1:2]).all())
 
         # Check alignment is correct
         xs, ys = np.meshgrid(np.arange(128), np.arange(128))
@@ -523,13 +523,15 @@ class AutoTemporalAlignTest(unittest.TestCase):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
         image = self._build_image()
-        data_dict = {'image': np.stack((image, image), axis=2)}
+        data_dict = {'image': np.stack((image, -image), axis=2)}
 
         # This should be a slight rotation.
         coe = cv2.getRotationMatrix2D(angle=1.2, center=(64, 64), scale=1)
         warped_image = cv2.warpAffine(image, coe, (128, 128))
         coe = np.concatenate((coe, np.array([[0, 0, 1.]])), axis=0)
-        warped_dict = {'image': np.stack((warped_image, warped_image), axis=2)}
+        warped_dict = {
+            'image': np.stack((warped_image, -warped_image), axis=2)
+        }
 
         # Test on image input
         out_dict = align_op(warped_dict, data_dict)
@@ -552,6 +554,50 @@ class AutoTemporalAlignTest(unittest.TestCase):
         image_crop = image[32:-32, 32:-32]
         self.assertTrue(np.abs(out_crop - image_crop).mean() <= 1)
 
+    def test_motion_detection(self):
+        align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
+
+        self.assertTrue(align_op.source_background is None)
+        self.assertTrue(align_op.control_background is None)
+        self.assertFalse(align_op.skipped_batch)
+
+        image = self._build_image()
+        data_dict = {'image': np.stack([image] * 3, axis=2)}
+        data_dict['image'] += np.random.uniform(0, 0.001, (128, 128, 3, 3))
+
+        # This should be a slight rotation.
+        coe = cv2.getRotationMatrix2D(angle=1.2, center=(64, 64), scale=1)
+        warped_image = cv2.warpAffine(image, coe, (128, 128))
+        warped_dict = {'image': np.stack([warped_image] * 3, axis=2)}
+        warped_dict['image'] += np.random.uniform(0, 0.001, (128, 128, 3, 3))
+
+        # Test on input
+        out = align_op(warped_dict, data_dict)
+
+        # Check that it was held
+        self.assertTrue(isinstance(out, v2v.operators.HoldToken))
+
+        # Check background is correct
+        self.assertTrue(align_op.skipped_batch)
+        self.assertTrue(align_op.source_background is not None)
+        self.assertTrue(align_op.control_background is not None)
+
+        # Check ResetPipeline is triggered.
+        data_dict = {'image': np.stack((image, -image, -image), axis=2)}
+        warped_dict = {
+            'image': np.stack((warped_image, -warped_image, -warped_image),
+                              axis=2)
+        }
+
+        with self.assertRaises(v2v.ResetPipeline):
+            out = align_op(warped_dict, data_dict)
+
+        # Check reset method
+        align_op.reset()
+        self.assertFalse(align_op.skipped_batch)
+        self.assertTrue(align_op.source_background is None)
+        self.assertTrue(align_op.control_background is None)
+
     def test_serialization(self):
         align_op = v2v.AutoTemporalAlign(
             (-1, 2), bands=[[0], [0]], mask=[1, 1, -1, -1]
@@ -565,8 +611,10 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertIs(align_op_2.output_size, None)
         self.assertIs(align_op_2.time_shift, None)
 
-        image_1 = np.arange(10, dtype=np.uint8).repeat(10).reshape(10, 10)
-        image_2 = np.arange(1, 11, dtype=np.uint8).repeat(10).reshape(10, 10)
+        image_1 = np.arange(0., 1., 0.1, dtype=np.float32)
+        image_1 = image_1.repeat(10).reshape(10, 10, 1, 1)
+        image_1 = image_1 + np.arange(0., 1., 0.2).reshape(1, 1, 5, 1)
+        image_2 = image_1 + 0.2
 
         out_1 = align_op({'image': image_1}, {'image': image_2})
         out_2 = align_op_2({'image': image_1}, {'image': image_2})

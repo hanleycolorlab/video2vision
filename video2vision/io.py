@@ -192,9 +192,9 @@ class Loader(Operator):
         # loading from disk. This is used to apply Pipelines to images in
         # memory.
         if _READ_WRITE_FROM_TO_BUFFER:
-            while self.buff:
-                self._check_size(self.buff[0])
-                yield self.buff.pop(0), None
+            for data_dict in self.buff:
+                self._check_size(data_dict)
+                yield data_dict, None
 
         else:
             for path, reader in zip(self.paths, self._readers):
@@ -287,6 +287,15 @@ class Loader(Operator):
 
         return image
 
+    def reset(self):
+        '''
+        Resets the :class:`Loader` to the start of its inputs.
+        '''
+        self._data_iter = iter(self)
+        for reader in self._readers:
+            if reader is not None:
+                reader.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
     def set_path(self, paths: Optional[Union[str, Iterator[str]]]):
         '''
         Sets the input path.
@@ -309,7 +318,7 @@ class Loader(Operator):
                 else:
                     self._readers.append(None)
 
-        self._data_iter = iter(self)
+        self.reset()
 
     def _to_json(self) -> Dict:
         return {
@@ -449,6 +458,16 @@ class Writer(Operator):
         if self._writer is not None:
             for writer in self._writer:
                 writer.release()
+
+    def reset(self):
+        '''
+        Resets the :class:`Writer` to the start.
+        '''
+        # TODO: Should this delete or otherwise clear out anything that's been
+        # written out previously? The expectation would be that Writer should
+        # only receive HoldTokens prior to reset being called, but that cannot
+        # be guaranteed.
+        self._writer = None
 
     def set_path(self, path: Optional[str]):
         '''
