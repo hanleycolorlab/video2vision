@@ -262,9 +262,9 @@ class SelectorBox(widgets.VBox):
     def _prep(self, image: np.ndarray) -> np.ndarray:
         if self.preprocess is not None:
             image = self.preprocess(image)
+        self._cached_image = image
         # Apply gamma scaling to ensure visually correct display
         image = gamma_scale(image)
-        self._cached_image = image
 
         # Loader returns in BGR, but SampleSelector expects RGB. Also, we need
         # to convert float32, [0, 1] to uint8, [0, 255]
