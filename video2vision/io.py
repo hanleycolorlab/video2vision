@@ -248,15 +248,23 @@ class Loader(Operator):
 
         else:
             h, w, c = frame.shape
-            rtn = np.empty((h, w, self.batch_size, c), dtype=frame.dtype)
-            rtn[:, :, 0, :] = frame
+            # We arrange rtn in order THWC instead of the usual order HWTC,
+            # because this reduces the time required to copy frames in by a
+            # factor of x6. We then move the axis prior to returning to convert
+            # it to HWTC. This *does* mean that the returned array is not
+            # contiguous, but operators are not supposed to assume that it will
+            # be.
+            rtn = np.empty((self.batch_size, h, w, c), dtype=frame.dtype)
+            rtn[0, :, :, :] = frame
 
             try:
                 for t in range(1, self.batch_size):
-                    rtn[:, :, t, :], name = next(self._data_iter)
+                    rtn[t, :, :, :], name = next(self._data_iter)
                     names.append(name)
             except StopIteration:
-                rtn = rtn[:, :, :t, :]
+                rtn = rtn[:t, :, :, :]
+
+            rtn = np.moveaxis(rtn, 0, 2)
 
             return {'image': rtn, 'names': names}
 
