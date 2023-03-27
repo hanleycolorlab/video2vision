@@ -433,6 +433,33 @@ class IOTest(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(temp_path, 'b.mp4')))
             self.assertTrue(os.path.exists(os.path.join(temp_path, 'c.mp4')))
 
+    def test_convert_and_scale_uint8(self):
+        image = np.ones((2, 2, 3), dtype=np.uint8)
+        out = v2v.io._convert_and_scale_uint8(image)
+        self.assertEqual(out.shape, (2, 2, 3))
+        self.assertEqual(out.dtype, np.float32)
+        self.assertTrue((out == 1 / 256.).all())
+
+        buff = np.zeros((2, 2, 3), dtype=np.float32)
+        out = v2v.io._convert_and_scale_uint8(image, out=buff)
+        self.assertEqual(out.shape, (2, 2, 3))
+        self.assertEqual(out.dtype, np.float32)
+        self.assertTrue((out == 1 / 256.).all())
+        self.assertTrue((buff == 1 / 256.).all())
+
+        image = np.ones((2, 2, 3), dtype=np.float64)
+        out = v2v.io._convert_and_scale_uint8(image)
+        self.assertEqual(out.shape, (2, 2, 3))
+        self.assertEqual(out.dtype, np.float32)
+        self.assertTrue((out == 1 / 256.).all())
+
+        buff = np.zeros((2, 2, 3), dtype=np.float32)
+        out = v2v.io._convert_and_scale_uint8(image, out=buff)
+        self.assertEqual(out.shape, (2, 2, 3))
+        self.assertEqual(out.dtype, np.float32)
+        self.assertTrue((out == 1 / 256.).all())
+        self.assertTrue((buff == 1 / 256.).all())
+
 
 if __name__ == '__main__':
     unittest.main()

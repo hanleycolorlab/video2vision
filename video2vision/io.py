@@ -57,7 +57,7 @@ def load(path: str) -> np.ndarray:
             raise ImportError('tifffile is needed to read tif files')
         image = tifffile.imread(path)
         # Rescale to [0, 1] and float32
-        image = image.astype(np.float32) / 256.
+        image = _convert_and_scale_uint8(image)
 
     elif path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
@@ -69,7 +69,7 @@ def load(path: str) -> np.ndarray:
         reader.release()
         image = np.stack(frames, axis=2)
         # Rescale to [0, 1] and float32
-        image = image.astype(np.float32) / 256.
+        image = _convert_and_scale_uint8(image)
 
     elif path.lower().endswith(('.arw', '.nef')):
         if not has_rawpy:
@@ -99,7 +99,7 @@ def load(path: str) -> np.ndarray:
     else:
         image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         # Rescale to [0, 1] and float32
-        image = image.astype(np.float32) / 256.
+        image = _convert_and_scale_uint8(image)
 
     return _coerce_to_image(image)
 
@@ -204,7 +204,7 @@ class Loader(Operator):
                     while ret and reader.isOpened():
                         self._check_size(frame)
                         # Rescale to [0, 1] before returning
-                        yield frame.astype(np.float32) / 256., name
+                        yield _convert_and_scale_uint8(frame), name
                         ret, frame = reader.read()
                 else:
                     # load handles rescaling for us
@@ -289,7 +289,7 @@ class Loader(Operator):
         else:
             reader.set(cv2.CAP_PROP_POS_FRAMES, t)
             _, image = reader.read()
-            image = image.astype(np.float32) / 256.
+            image = _convert_and_scale_uint8(image)
 
         self._check_size(image)
 
@@ -528,6 +528,29 @@ def _get_writer(path: str, image: np.ndarray) -> cv2.VideoWriter:
         image.shape[:2][::-1],
         (image.shape[-1] > 1),
     )
+
+
+_LUT = np.arange(0, 256, dtype=np.float32) / 256.
+
+
+def _convert_and_scale_uint8(image: np.ndarray,
+                             out: Optional[np.ndarray] = None) -> np.ndarray:
+    '''
+    Convenience function for converting a :class:`numpy.ndarray` of dtype uint8
+    into float32 and scaling by 256.
+    '''
+    # cv2.LUT is parallelized. However, the parallelization is shape-dependent.
+    # From experimentation, the shape (1, -1) is consistently quite speedy, and
+    # it works with arbitrarily-shaped input images.
+    if image.dtype == np.uint8:
+        out = cv2.LUT(
+            image.reshape(1, -1),
+            _LUT,
+            None if (out is None) else out.reshape(1, -1),
+        )
+        return out.reshape(*image.shape)
+    else:
+        return np.divide(image.astype(np.float32), 256., out=out)
 
 
 @contextmanager
