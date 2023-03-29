@@ -35,6 +35,11 @@ class IOTest(unittest.TestCase):
         should_be = np.array([456, 456, 474, 492, 493, 494, 494, 494.]) / 15360
         self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
 
+        out = np.empty_like(image)
+        image = v2v.load(path, out=out)
+        self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
+        self.assertTrue((np.abs(out[:8, 0, 2] - should_be) < 1e-7).all())
+
     def test_load_and_save(self):
         '''
         Tests the :func:`load` and :func:`save` functions.
@@ -76,6 +81,14 @@ class IOTest(unittest.TestCase):
                     self.assertEqual(rtn.shape, shape, (ext, shape))
                     self.assertTrue(_is_close(rtn, image))
 
+                    out = np.empty_like(image)
+                    v2v.save(image, temp_path)
+                    rtn = v2v.load(temp_path, out=out)
+                    self.assertEqual(rtn.dtype, np.float32, (ext, shape))
+                    self.assertEqual(rtn.shape, shape, (ext, shape))
+                    self.assertTrue(_is_close(rtn, image))
+                    self.assertTrue(_is_close(rtn, out))
+
     def test_loader_handling(self):
         '''
         Tests basic handling of the :class:`Loader`.
@@ -88,7 +101,7 @@ class IOTest(unittest.TestCase):
             v2v.save(image_1, temp_path_1)
             temp_path_2 = os.path.join(temp_root, '2.png')
             v2v.save(image_2, temp_path_2)
-            loader = v2v.Loader(temp_root)
+            loader = v2v.Loader(temp_root, (16, 16))
             self.assertEqual(len(loader), 2)
 
             # Test with batch_size = 1
@@ -96,15 +109,15 @@ class IOTest(unittest.TestCase):
             self.assertTrue(isinstance(out_1, dict))
             self.assertEqual(out_1.keys(), {'image', 'names'})
             self.assertEqual(out_1['names'], ['1'])
-            self.assertEqual(out_1['image'].shape, image_1.shape)
+            self.assertEqual(out_1['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_1['image'].dtype, np.float32)
-            self.assertTrue((out_1['image'] == image_1).all())
+            self.assertTrue((out_1['image'] == 0).all())
 
             out_2 = loader()
             self.assertTrue(isinstance(out_2, dict))
             self.assertEqual(out_2.keys(), {'image', 'names'})
             self.assertEqual(out_2['names'], ['2'])
-            self.assertEqual(out_2['image'].shape, image_2.shape)
+            self.assertEqual(out_2['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_2['image'].dtype, np.float32)
             self.assertTrue((out_2['image'] == (255. / 256.)).all())
 
@@ -112,7 +125,7 @@ class IOTest(unittest.TestCase):
                 loader()
 
             # Test with batch_size = 3
-            loader = v2v.Loader(temp_root, batch_size=3)
+            loader = v2v.Loader(temp_root, (16, 16), batch_size=3)
             self.assertEqual(len(loader), 2)
 
             out = loader()
@@ -158,7 +171,7 @@ class IOTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_root:
             path = os.path.join(temp_root, 'test.mp4')
             v2v.save(video, path)
-            loader = v2v.Loader(temp_root, batch_size=1, expected_size=(8, 8))
+            loader = v2v.Loader(temp_root, (8, 8), batch_size=1)
 
             with self.assertRaises(RuntimeError):
                 loader()
@@ -194,14 +207,14 @@ class IOTest(unittest.TestCase):
         '''
         image_1 = np.zeros((16, 16, 3), dtype=np.float32)
         image_2 = np.full((16, 16, 3), 255. / 256., dtype=np.float32)
-        loader = v2v.Loader(batch_size=2)
+        loader = v2v.Loader(None, (16, 16), batch_size=2)
 
         # Test for error before we actually add the buffer
         with self.assertRaises(v2v.io.OutOfInputs):
             with v2v.io._read_write_from_to_buffer():
                 loader()
 
-        loader.buff = [image_1, image_2]
+        loader.buff = np.stack((image_1, image_2), axis=0)
 
         with v2v.io._read_write_from_to_buffer():
             out = loader()
@@ -212,7 +225,7 @@ class IOTest(unittest.TestCase):
         self.assertEqual(out['image'].dtype, np.float32)
         self.assertTrue((out['image'][:, :, 0, :] == image_1).all())
         self.assertTrue((out['image'][:, :, 1, :] == image_2).all())
-        self.assertEqual(loader.buff, [])
+        self.assertEqual(loader.buff, None)
 
     def test_loader_video_handling(self):
         '''
@@ -224,7 +237,7 @@ class IOTest(unittest.TestCase):
             path = os.path.join(temp_root, 'test.mp4')
             v2v.save(video, path)
 
-            loader = v2v.Loader(temp_root, batch_size=2)
+            loader = v2v.Loader(temp_root, (256, 256), batch_size=2)
             out = loader()
             self.assertTrue(isinstance(out, dict))
             self.assertEqual(out.keys(), {'image', 'names'})
@@ -377,7 +390,7 @@ class IOTest(unittest.TestCase):
             v2v.save(video[:, :, 0], os.path.join(temp_root, 'test_1.png'))
             v2v.save(video[:, :, 1], os.path.join(temp_root, 'test_2.png'))
 
-            loader = v2v.Loader(temp_root, batch_size=2)
+            loader = v2v.Loader(temp_root, (256, 256), batch_size=2)
 
             self.assertTrue(len(loader) == 5, len(loader))
 

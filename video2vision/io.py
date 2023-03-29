@@ -39,13 +39,15 @@ _IMAGE_EXTENSIONS = [
 ]
 
 
-def load(path: str) -> np.ndarray:
+def load(path: str, out: Optional[np.ndarray] = None) -> np.ndarray:
     '''
     Convenience function for loading images from disk. Dispatches to
     appropriate backend.
 
     Args:
         path (str): Path to image to load.
+        out (optional, :class:`numpy.ndarray`): If provided, this is the buffer
+        to load the image into.
     '''
     # Some of the function calls below don't raise an error if the file doesn't
     # exist, they just fail silently. So let's check explicitly.
@@ -57,7 +59,7 @@ def load(path: str) -> np.ndarray:
             raise ImportError('tifffile is needed to read tif files')
         image = tifffile.imread(path)
         # Rescale to [0, 1] and float32
-        image = _convert_and_scale_uint8(image)
+        image = _convert_and_scale_uint8(image, out=out)
 
     elif path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
@@ -69,7 +71,7 @@ def load(path: str) -> np.ndarray:
         reader.release()
         image = np.stack(frames, axis=2)
         # Rescale to [0, 1] and float32
-        image = _convert_and_scale_uint8(image)
+        image = _convert_and_scale_uint8(image, out=out)
 
     elif path.lower().endswith(('.arw', '.nef')):
         if not has_rawpy:
@@ -91,15 +93,21 @@ def load(path: str) -> np.ndarray:
                       raw_file.camera_white_level_per_channel[3])),
                 raw_file.camera_white_level_per_channel[2],
             ])
+
+        image = image.astype(np.float32)
         # Rescales to [0, 1] and float32
-        image = image.astype(np.float32) / white_level.reshape(1, 1, 3)
+        image = np.divide(
+            image,
+            white_level.reshape(1, 1, 3),
+            None if (out is None) else out[:, :, ::-1],
+        )
         # Reverse channels from RGB to BGR
         image = image[:, :, ::-1]
 
     else:
         image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         # Rescale to [0, 1] and float32
-        image = _convert_and_scale_uint8(image)
+        image = _convert_and_scale_uint8(image, out=out)
 
     return _coerce_to_image(image)
 
@@ -166,35 +174,37 @@ class Loader(Operator):
     '''
     num_inputs = 0
 
-    def __init__(self, path: Optional[Union[str, Iterator[str]]] = None,
-                 batch_size: int = 1,
-                 expected_size: Optional[Tuple[int, int]] = None):
+    def __init__(self, path: Optional[Union[str, Iterator[str]]],
+                 expected_size: Tuple[int, int],
+                 batch_size: int = 1, num_channels: int = 3):
         '''
         Args:
             path (str or iterator of str): Path(s) to the images to load. This
             can be a directory, in which case everything in the directory will
             be loaded, or it can be a path to a single image, or it can be a
             string with wildcards.
+            expected_size (pair of int): The inputs must be of this size. This
+            should be (width, height).
             batch_size (int): Number of images to return at a time.
-            expected_size (optional, pair of int): If provided, make sure that
-            the inputs are of this size. This should be (width, height).
+            num_channels (int): Number of channels to expect in inputs.
         '''
         self.set_path(path)
         self.batch_size = batch_size
         self.expected_size = expected_size
+        self.num_channels = num_channels
         # This is used to provide external inputs from memory to a pipeline,
         # instead of loading from disk. It is only consulted if the global
         # variable _READ_WRITE_FROM_BUFFER is true.
-        self.buff: List[np.ndarray] = []
+        self.buff: Optional[np.ndarray] = None
 
     def __iter__(self) -> Iterator[np.ndarray]:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
         # loading from disk. This is used to apply Pipelines to images in
         # memory.
         if _READ_WRITE_FROM_TO_BUFFER:
-            for data_dict in self.buff:
-                self._check_size(data_dict)
-                yield data_dict, None
+            for image in self.buff:
+                self._check_size(image)
+                yield image, None
 
         else:
             for path, reader in zip(self.paths, self._readers):
@@ -204,11 +214,16 @@ class Loader(Operator):
                     while ret and reader.isOpened():
                         self._check_size(frame)
                         # Rescale to [0, 1] before returning
-                        yield _convert_and_scale_uint8(frame), name
+                        frame = _convert_and_scale_uint8(
+                            frame, out=self.buff[self.t]
+                        )
+                        self.t += 1
+                        yield frame, name
                         ret, frame = reader.read()
                 else:
                     # load handles rescaling for us
-                    image = load(path)
+                    image = load(path, out=self.buff[self.t])
+                    self.t += 1
                     self._check_size(image)
                     yield image, name
 
@@ -219,54 +234,46 @@ class Loader(Operator):
             return sum(int(_get_num_frames(r)) for r in self._readers)
 
     def _check_size(self, image: np.ndarray):
-        if self.expected_size is not None:
-            if tuple(self.expected_size) != image.shape[:2][::-1]:
-                raise RuntimeError(
-                    f'Image does not match expected size: '
-                    f'{image.shape[:2][::-1]} vs {self.expected_size}'
-                )
+        if image.shape != (*self.expected_size[::-1], self.num_channels):
+            raise RuntimeError(
+                f'Image does not match expected size: {image.shape} vs '
+                f'{(*self.expected_size[::-1], self.num_channels)}'
+            )
 
     def apply(self) -> Dict:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
         # loading from disk. This is used to apply Pipelines to images in
         # memory.
         if _READ_WRITE_FROM_TO_BUFFER:
-            if self.buff:
-                out, self.buff = np.stack(self.buff, axis=2), []
+            if self.buff is not None:
+                out, self.buff = np.moveaxis(self.buff, 0, 2), None
                 return {'image': out}
             else:
                 raise OutOfInputs('Buffer is empty')
 
+        # We arrange the buffer in order THWC instead of the usual order HWTC,
+        # because this reduces the time required to copy frames in by a factor
+        # of x6. We then move the axis prior to returning to convert it to
+        # HWTC. This *does* mean that the returned array is not contiguous, but
+        # operators are not supposed to assume that it will be.
+        self.buff = np.empty(
+            (self.batch_size, *self.expected_size[::-1], self.num_channels),
+            dtype=np.float32
+        )
+        # self.t keeps track of the next entry in the buffer to fill.
+        self.t, names = 0, []
+
         try:
-            frame, name = next(self._data_iter)
+            for _ in range(self.batch_size):
+                _, name = next(self._data_iter)
+                names.append(name)
         except StopIteration:
-            raise OutOfInputs()
-        names = [name]
+            if self.t == 0:
+                raise OutOfInputs()
 
-        if self.batch_size == 1:
-            return {'image': frame, 'names': names}
+        self.buff = self.buff[:self.t, :, :, :]
 
-        else:
-            h, w, c = frame.shape
-            # We arrange rtn in order THWC instead of the usual order HWTC,
-            # because this reduces the time required to copy frames in by a
-            # factor of x6. We then move the axis prior to returning to convert
-            # it to HWTC. This *does* mean that the returned array is not
-            # contiguous, but operators are not supposed to assume that it will
-            # be.
-            rtn = np.empty((self.batch_size, h, w, c), dtype=frame.dtype)
-            rtn[0, :, :, :] = frame
-
-            try:
-                for t in range(1, self.batch_size):
-                    rtn[t, :, :, :], name = next(self._data_iter)
-                    names.append(name)
-            except StopIteration:
-                rtn = rtn[:t, :, :, :]
-
-            rtn = np.moveaxis(rtn, 0, 2)
-
-            return {'image': rtn, 'names': names}
+        return {'image': np.moveaxis(self.buff, 0, 2), 'names': names}
 
     def get_frame(self, t: int) -> np.ndarray:
         '''
@@ -300,6 +307,7 @@ class Loader(Operator):
         Resets the :class:`Loader` to the start of its inputs.
         '''
         self._data_iter = iter(self)
+        self.buff, self.t = None, 0
         for reader in self._readers:
             if reader is not None:
                 reader.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -333,6 +341,8 @@ class Loader(Operator):
             'class': self.__class__.__name__,
             'batch_size': self.batch_size,
             'expected_size': self.expected_size,
+            'num_channels': self.num_channels,
+            'path': self.paths
         }
 
 

@@ -57,7 +57,7 @@ class PipelineTest(unittest.TestCase):
         pipe = v2v.Pipeline()
 
         # Create loader
-        loader_idx = pipe.add_operator(v2v.Loader(in_root, batch_size))
+        loader_idx = pipe.add_operator(v2v.Loader(in_root, (8, 8), batch_size))
 
         # Create 90 degree rotater, and connect loader to it
         rot_idx = pipe.add_operator(v2v.Rotate(90, (8, 8), center=(3.5, 3.5)))
@@ -173,7 +173,7 @@ class PipelineTest(unittest.TestCase):
             with warnings.catch_warnings():
                 warnings.simplefilter('ignore', ImportWarning)
                 pipe = v2v.Pipeline.chain(
-                    v2v.Loader(in_root),
+                    v2v.Loader(in_root, (8, 8)),
                     v2v.Rotate(90, (8, 8), center=(3.5, 3.5)),
                     v2v.Translation(0, 1, (8, 8)),
                     v2v.Writer(out_root_2),
@@ -253,7 +253,7 @@ class PipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_path:
             in_root, _, _ = self._make_images(temp_path)
             pipe = v2v.Pipeline()
-            loader_idx = pipe.add_operator(v2v.Loader(in_root, 1))
+            loader_idx = pipe.add_operator(v2v.Loader(in_root, (8, 8), 1))
             counter = ResetCounterOperator()
             count_idx = pipe.add_operator(counter)
             pipe.add_edge(loader_idx, count_idx, in_slot=0)

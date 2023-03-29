@@ -88,7 +88,9 @@ class Pipeline(nx.DiGraph):
     def __call__(self, *images) -> Union[List[np.ndarray], np.ndarray]:
         # Put images into buffers
         for loader, _images in zip(self.get_loaders(), images):
-            loader.buff = [_images]
+            # loader.buff is in THWC arrangement, unlike the usual HWTC
+            # arrangement.
+            loader.buff = np.moveaxis(_images, 2, 0)
 
         # Run pipeline
         with _read_write_from_to_buffer():

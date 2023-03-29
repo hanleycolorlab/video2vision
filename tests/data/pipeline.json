@@ -4,6 +4,7 @@
 		"operator": {
 			"class": "Loader",
 			"path": null,
+			"expected_size": [6000, 3376],
 			"batch_size": 1
 		},
 		"edges": [[1, {"in_slot": 0}]]

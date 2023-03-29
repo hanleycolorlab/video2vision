@@ -18,14 +18,7 @@ def _warp_points(coe, xys):
 
 class AutoAlignTest(unittest.TestCase):
     def test_handling_with_aruco(self):
-        pipe = v2v.Pipeline()
-        loader_1, loader_2 = v2v.Loader(), v2v.Loader()
-        loader_idx_1 = pipe.add_operator(loader_1)
-        loader_idx_2 = pipe.add_operator(loader_2)
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
-        align_idx = pipe.add_operator(align_op)
-        pipe.add_edge(loader_idx_1, align_idx, in_slot=0)
-        pipe.add_edge(loader_idx_2, align_idx, in_slot=1)
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image_path = os.path.join(data_root, 'marker_sample_1.jpg')
@@ -78,14 +71,7 @@ class AutoAlignTest(unittest.TestCase):
 
         # Test that it raises a RuntimeError if pointed to an image with no
         # ARUCO markers in it.
-        pipe = v2v.Pipeline()
-        loader_1, loader_2 = v2v.Loader(), v2v.Loader()
-        loader_idx_1 = pipe.add_operator(loader_1)
-        loader_idx_2 = pipe.add_operator(loader_2)
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
-        align_idx = pipe.add_operator(align_op)
-        pipe.add_edge(loader_idx_1, align_idx, in_slot=0)
-        pipe.add_edge(loader_idx_2, align_idx, in_slot=1)
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image_path = os.path.join(data_root, 'uv_sample.jpg')
@@ -99,14 +85,7 @@ class AutoAlignTest(unittest.TestCase):
             align_op(warped_image, data_dict)
 
     def test_handling_with_ecc(self):
-        pipe = v2v.Pipeline()
-        loader_1, loader_2 = v2v.Loader(), v2v.Loader()
-        loader_idx_1 = pipe.add_operator(loader_1)
-        loader_idx_2 = pipe.add_operator(loader_2)
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []])
-        align_idx = pipe.add_operator(align_op)
-        pipe.add_edge(loader_idx_1, align_idx, in_slot=0)
-        pipe.add_edge(loader_idx_2, align_idx, in_slot=1)
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image_path = os.path.join(data_root, 'uv_sample.jpg')
@@ -491,7 +470,9 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertEqual(align_op.time_shift, 1)
         self.assertEqual(align_op.buff.shape, (128, 128, 1, 3))
         self.assertEqual(align_op.buff_names, ['d'])
-        self.assertTrue((align_op.buff == warped_dict['image'][:, :, 1:2]).all())
+        self.assertTrue(
+            (align_op.buff == warped_dict['image'][:, :, 1:2]).all()
+        )
 
         # Check alignment is correct
         xs, ys = np.meshgrid(np.arange(128), np.arange(128))
