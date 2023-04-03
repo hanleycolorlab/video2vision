@@ -115,7 +115,8 @@ def _coerce_to_image(image: Any) -> np.ndarray:
     Convenience function to coerce an arbitrary objects to a
     :class:`numpy.ndarray` that is either 3- or 4-dimensional.
     '''
-    image = np.array(image)
+    if not isinstance(image, np.ndarray):
+        image = np.array(image)
     # Assume a 2-dimensional image is an image with a single band.
     if image.ndim == 2:
         image = image.reshape(*image.shape, 1)
