@@ -35,11 +35,7 @@ class ElementwiseOperator(Operator):
             )
 
         with _coerce_to_2dim(x):
-            out = [
-                func(x['image'][..., band].flatten()).astype(np.float32)
-                for band, func in enumerate(self.funcs)
-            ]
-            x['image'] = np.stack(out, axis=1)
+            x['image'] = self.apply_values(x['image'])
 
         return x
 
@@ -51,7 +47,13 @@ class ElementwiseOperator(Operator):
         This is a convenience function that applies the functions to a set of
         values of shape (N, B), where N indexs the value and B indexs the band.
         '''
-        return np.stack([f(s) for f, s in zip(self.funcs, values.T)], axis=1)
+        if (values.ndim != 2) or (values.shape[1] != len(self.funcs)):
+            raise ValueError(values.shape)
+
+        return np.stack(
+            [f(values[:, b]) for b, f in enumerate(self.funcs)],
+            axis=1
+        )
 
 
 @OPERATOR_REGISTRY.register
@@ -133,22 +135,23 @@ class PowerLawFormula:
         self.scale, self.base, self.shift = scale, base, shift
         self.shoulder = shoulder
 
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, x: np.ndarray, out: Optional[np.ndarray] = None) \
+            -> np.ndarray:
         # Calculate power law component. We do these operations in place
         # where possible to minimize memory use.
         pow_out = self.base**x
         pow_out *= self.scale
-        pow_out += self.shift
+
         # Calculate linear component
         if self.shoulder is not None:
             cbx = self.scale * self.base**self.shoulder
             slope = cbx * log(self.base)
-            intercept = cbx + self.shift - (self.shoulder * slope)
+            intercept = cbx - (self.shoulder * slope)
             linear_out = x * slope
             linear_out += intercept
-            return np.where(x > self.shoulder, pow_out, linear_out)
-        else:
-            return pow_out
+            pow_out = np.where(x > self.shoulder, pow_out, linear_out)
+
+        return np.add(pow_out, self.shift, out=out)
 
     def __repr__(self) -> str:
         return f'PowerLawFormula(scale={self.scale}, base={self.base}, ' \
@@ -230,6 +233,22 @@ class PowerLaw(ElementwiseOperator):
         Fits a power law to a given set of inputs and desired outputs.
         '''
         return PowerLawFormula.fit(input_samples, target_samples, init_coeffs)
+
+    def apply_values(self, values: np.ndarray) -> np.ndarray:
+        '''
+        This is a convenience function that applies the functions to a set of
+        values of shape (N, B), where N indexs the value and B indexs the band.
+        '''
+        if (values.ndim != 2) or (values.shape[1] != len(self.funcs)):
+            raise ValueError(values.shape)
+
+        # We arrange the buffer in shape BN instead of NB so that the out
+        # argument will be contiguous, which will improve the runtime.
+        buff = np.empty(values.shape[::-1], dtype=np.float32)
+        for band, func in enumerate(self.funcs):
+            func(values[:, band], out=buff[band, :])
+
+        return buff.T
 
 
 def build_linearizer(input_samples: np.ndarray, target_samples: np.ndarray,

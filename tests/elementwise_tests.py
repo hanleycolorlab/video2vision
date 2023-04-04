@@ -1,4 +1,5 @@
 import json
+from math import log
 import unittest
 
 import numpy as np
@@ -169,6 +170,16 @@ class PowerLawTest(unittest.TestCase):
         should_be = np.array([[3., 0.5], [5., 1.], [2., 2.]])
         out = power_op.apply_values(values)
         self.assertTrue((out == should_be).all(), out)
+
+    def test_power_law_formula(self):
+        # This will be y = 1 + 2^x
+        power_law = v2v.elementwise.PowerLawFormula(1, 2, 1, 1)
+        x = np.array([0, 1, 2], dtype=np.float32)
+        out = np.zeros_like(x)
+        y = power_law(x, out=out)
+        self.assertTrue(y is out)
+        should_be = np.array([3 - (2 * log(2)), 3, 5])
+        self.assertTrue((np.abs(y - should_be) < 1e-4).all(), y)
 
     def test_serialization(self):
         '''
