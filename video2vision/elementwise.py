@@ -3,6 +3,7 @@ from math import log
 from typing import Callable, Dict, List, Optional, Tuple, Union
 import warnings
 
+import cv2
 import numpy as np
 # Suppress harmless warning
 with warnings.catch_warnings():
@@ -132,14 +133,20 @@ class PowerLawFormula:
 
             shoulder (optional, float): Location of the shoulder.
         '''
-        self.scale, self.base, self.shift = scale, base, shift
+        self.scale = scale
+        self.base = base
+        self.shift = shift
         self.shoulder = shoulder
 
     def __call__(self, x: np.ndarray, out: Optional[np.ndarray] = None) \
             -> np.ndarray:
-        # Calculate power law component. We do these operations in place
-        # where possible to minimize memory use.
-        pow_out = self.base**x
+        # Calculate power law component. The combination of np.ndarray.__mul__
+        # and cv2.exp is actually significantly faster than np.ndarray.__pow__.
+        # I tried replacing the other np.ndarray operations with the
+        # corresponding cv2 ops, e.g. cv2.add, but this did not realize similar
+        # gains.
+        pow_out = x * log(self.base)
+        pow_out = cv2.exp(pow_out, pow_out)
         pow_out *= self.scale
 
         # Calculate linear component
