@@ -89,10 +89,12 @@ class PipelineTest(unittest.TestCase):
 
         self.assertTrue(rtn_1.shape, (8, 8, 3))
         rot_should_be_1 = np.rollaxis(self.image_1, 1, 0)[::-1]
+        rot_should_be_1 = rot_should_be_1.astype(np.float32) / 256.
         self.assertTrue((rtn_1 == rot_should_be_1).all())
 
         self.assertTrue(rtn_2.shape, (8, 8, 3))
         rot_should_be_2 = np.rollaxis(self.image_2, 1, 0)[::-1]
+        rot_should_be_2 = rot_should_be_2.astype(np.float32) / 256.
         self.assertTrue((rtn_2 == rot_should_be_2).all())
 
     def _check_output_2(self, temp_path: str):
@@ -111,6 +113,7 @@ class PipelineTest(unittest.TestCase):
         trans_should_be_1 = np.concatenate(
             (zeros, rot_should_be_1[:-1]), axis=0
         )
+        trans_should_be_1 = trans_should_be_1.astype(np.float32) / 256.
         self.assertTrue((rtn_1 == trans_should_be_1).all())
 
         self.assertTrue(rtn_2.shape, (8, 8, 3))
@@ -118,6 +121,7 @@ class PipelineTest(unittest.TestCase):
         trans_should_be_2 = np.concatenate(
             (zeros, rot_should_be_2[:-1]), axis=0
         )
+        trans_should_be_2 = trans_should_be_2.astype(np.float32) / 256.
         self.assertTrue((rtn_2 == trans_should_be_2).all())
 
     def _check_outputs(self, temp_path: str):
