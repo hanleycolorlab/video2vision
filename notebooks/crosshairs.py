@@ -32,7 +32,7 @@ DEFAULT_CROSSHAIR[:, :, 1] = DEFAULT_CROSSHAIR[:, :, 3] = 255
 try:
     FONT = ImageFont.truetype('Inconsolata.otf', 32)
 except OSError:
-    FONT = ImageFont.truetype('arial.ttf', 32)
+    FONT = ImageFont.truetype('Arial.ttf', 32)
 
 FONT_COLOR = (0, 255, 0)
 
