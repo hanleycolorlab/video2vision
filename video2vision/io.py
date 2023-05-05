@@ -105,7 +105,7 @@ def load(path: str, out: Optional[np.ndarray] = None) -> np.ndarray:
         image = image[:, :, ::-1]
 
     else:
-        image = cv2.imread(path, cv2.IMREAD_ANYCOLOR)
+        image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         # Rescale to [0, 1] and float32
         image = _convert_and_scale_uint8(image, out=out)
 
