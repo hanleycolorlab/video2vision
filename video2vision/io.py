@@ -207,6 +207,20 @@ class Loader(Operator):
                 yield image, None
 
         else:
+            # We arrange the buffer in order THWC instead of the usual order
+            # HWTC, because this reduces the time required to copy frames in by
+            # a factor of x6. We then move the axis prior to returning to
+            # convert it to HWTC. This *does* mean that the returned array is
+            # not contiguous, but operators are not supposed to assume that it
+            # will be.
+            self.buff = np.empty(
+                (self.batch_size, *self.expected_size[::-1],
+                 self.num_channels),
+                dtype=np.float32
+            )
+            # self.t keeps track of the next entry in the buffer to fill.
+            self.t = 0
+
             for path, reader in zip(self.paths, self._readers):
                 name, _ = os.path.splitext(os.path.basename(path))
                 if reader is not None:
@@ -215,14 +229,14 @@ class Loader(Operator):
                         self._check_size(frame)
                         # Rescale to [0, 1] before returning
                         frame = _convert_and_scale_uint8(
-                            frame, out=self.buff[self.t]
+                            frame, out=self.buff[self.t % self.batch_size]
                         )
                         self.t += 1
                         yield frame, name
                         ret, frame = reader.read()
                 else:
                     # load handles rescaling for us
-                    image = load(path, out=self.buff[self.t])
+                    image = load(path, out=self.buff[self.t % self.batch_size])
                     self.t += 1
                     self._check_size(image)
                     yield image, name
