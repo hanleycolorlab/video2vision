@@ -241,10 +241,15 @@ class SelectorBox(widgets.VBox):
         return self.selector.crosshairs
 
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
+        if max(self.selector.idxs) + 1 != len(self.selector.idxs):
+            raise ValueError('Not all samples selected')
         samples = v2v.utils.extract_samples(
             self._cached_image, self.crosshairs, self.sample_size,
         )
-        return samples, np.array(self.selector.crosshair_type, dtype=bool)
+        types = np.array(self.selector.crosshair_type, dtype=bool)
+        # Reindex samples
+        reidx = [self.selector.idxs.index(i) for i in range(samples.shape[0])]
+        return samples[reidx], types[reidx]
 
     @property
     def image(self) -> np.ndarray:
