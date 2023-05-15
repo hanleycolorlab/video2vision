@@ -277,6 +277,31 @@ class AutoLinearize(unittest.TestCase):
         out = line_op(image)
         self.assertTrue((np.abs(out['image'] - 5) <= 1e-2).all())
 
+    def test_hold(self):
+        '''
+        Tests that the operator returns a :class:`HoldToken` if no ARUCO
+        markers are found.
+        '''
+        _, marker_pts, sample_pts = self._build_image(1, 2, 3, 4)
+        image = np.zeros((20, 20, 1), dtype=np.float32)
+        exp_values = np.array([[161], [53], [5], [17]])
+
+        # Build the pipeline.
+        line_op = v2v.AutoLinearize(
+            marker_ids=[0, 1, 2, 3],
+            marker_points=marker_pts,
+            sample_points=sample_pts,
+            expected_values=exp_values,
+        )
+
+        # Put the data through the operator. This can raise a harmless
+        # RuntimeWarning caused by an overflow.
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'overflow encountered')
+            out = line_op(image)
+
+        self.assertTrue(isinstance(out, v2v.operators.HoldToken))
+
     def test_sampling(self):
         '''
         Tests the :func:`extract_samples` function.

@@ -371,12 +371,16 @@ class AutoLinearize(AutoOperator):
             op_cls = OPERATOR_REGISTRY.get(linearization.pop('class'))
             self.op = op_cls(**linearization)
 
-    def apply(self, x: Dict) -> Dict:
+    def apply(self, x: Dict) -> Union[Dict, HoldToken]:
         if self.op is not None:
             return self.op(x)
 
         with _coerce_to_4dim(x):
-            sample_points, t = self._locate_samples(x)
+            try:
+                sample_points, t = self._locate_samples(x)
+            except RuntimeError:
+                return HoldToken()
+
             samples = extract_samples(
                 x['image'][:, :, t, :], sample_points, self.sample_width
             )
