@@ -343,9 +343,11 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
     detector_params.adaptiveThreshWinSizeMax = 256
 
     with _coerce_to_4dim(x):
-        w = x['image'].shape[1]
-        # ARUCO detector requires uint8, but we now work in float32.
-        image = np.clip(x['image'] * 256., 0, 255).astype(np.uint8)
+        # ARUCO detector requires uint8, but we now work in float32. It also
+        # requires that the image be either 1- or 3-channel, so we convert to
+        # greyscale.
+        image = x['image'].mean(-1, keepdims=True, dtype=np.float32)
+        image = np.clip(image * 256., 0, 255).astype(np.uint8)
 
         for t in range(x['image'].shape[2]):
             pts, ids, _ = cv2.aruco.detectMarkers(
@@ -362,7 +364,7 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
                     parameters=detector_params,
                 )
                 for pt in pts:
-                    pt[:, :, 0] = w - pt[:, :, 0]
+                    pt[:, :, 0] = x['image'].shape[1] - pt[:, :, 0]
             if ids is not None:
                 ts.append(t)
                 pts = np.stack([box.reshape(4, 2) for box in pts], axis=0)

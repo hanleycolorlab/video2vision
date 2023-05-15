@@ -180,6 +180,9 @@ class UtilitiesTests(unittest.TestCase):
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image = v2v.load(os.path.join(data_root, 'marker_sample_1.jpg'))
+        # Add an extra channel to check that locate_aruco_markers properly
+        # handles images with non-standard numbers of channels.
+        image = np.concatenate((image, image), axis=2)
         image = np.stack((np.zeros_like(image), image), axis=2)
 
         t, pred_markers = v2v.utils.locate_aruco_markers(
