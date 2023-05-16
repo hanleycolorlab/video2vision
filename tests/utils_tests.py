@@ -170,6 +170,24 @@ class UtilitiesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             v2v.utils.extract_samples(image, [[4, 4, 2]])
 
+    def test_get_photoreceptor_template(self):
+        template = v2v.utils.get_photoreceptor_template(500, template='A1')
+        self.assertTrue(isinstance(template, np.ndarray))
+        self.assertEqual(template.shape, (401,))
+        self.assertEqual(template[0], 0.0010322057237818108)
+        self.assertEqual(template[100], 0.0016440751261561433)
+        self.assertEqual(template[400], 6.854037433359111e-08)
+
+        template = v2v.utils.get_photoreceptor_template(500, template='A2')
+        self.assertTrue(isinstance(template, np.ndarray))
+        self.assertEqual(template.shape, (401,))
+        self.assertEqual(template[0], 0.0005538273213520383)
+        self.assertEqual(template[100], 0.001908421897502598)
+        self.assertEqual(template[400], 2.1644502203039017e-07)
+
+        with self.assertRaises(ValueError):
+            v2v.utils.get_photoreceptor_template(500, template='A3')
+
     def test_locate_aruco_markers_with_specified_markers(self):
         marker_pts = np.array([
             [[3153., 1384.], [3080., 1384.], [3081., 1310.], [3154., 1310.]],

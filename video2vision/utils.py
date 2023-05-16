@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from copy import copy
 import csv
-from math import floor, isnan
+from math import exp, floor, isnan
 from statistics import mean
 from typing import Any, Dict, Optional, Tuple
 
@@ -11,8 +11,8 @@ import numpy as np
 _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
-    'detect_motion', 'extract_samples', 'locate_aruco_markers',
-    'read_jazirrad_file'
+    'detect_motion', 'extract_samples', 'get_photoreceptor_template',
+    'locate_aruco_markers', 'read_jazirrad_file'
 ]
 
 
@@ -308,6 +308,51 @@ def _evaluate_ecc_for_warp(template: Dict, image: Dict) -> float:
                 eccs.append(ecc)
 
     return mean(eccs)
+
+
+def get_photoreceptor_template(peak: float,
+                               wavelengths: np.ndarray = np.arange(300, 701),
+                               template: str = 'A1') -> np.ndarray:
+    '''
+    Convenience function for calculating the photoreceptor sensitivities for
+    the templates from:
+
+        Govardovskii, et al. 2000. ``In Search of the Visual Pigment
+        Template.'' Visual Neuroscience, Vol. 17 No. 4, pp. 509-528.
+
+    Args:
+        peak (float): Peak sensitivity of the photoreceptor, in nm.
+        wavelengths (:class:`numpy.ndarray`): The wavelengths to calculate the
+        photoreceptor sensitivities from, in nm. Default: evenly spaced every 1
+        nm from 300 to 700 nm inclusive.
+        template (str): Which template to use. Choices: 'a1', 'a2'.
+    '''
+    x = peak / wavelengths
+
+    if template == 'A1':
+        a = 0.8795 + 0.0459 * exp(-(peak - 300) ** 2 / 11940)
+        alpha = 1 / (
+            np.exp(69.7 * (a - x)) + np.exp(28 * (0.922 - x)) +
+            np.exp(-14.9 * (1.104 - x)) + 0.674
+        )
+        b = -40.5 + 0.195 * peak
+        beta = 0.26 * np.exp(-((wavelengths - (189 + 0.315 * peak)) / b) ** 2)
+
+    elif template == 'A2':
+        A = 62.7 + 1.834 * exp((peak - 625) / 54.2)
+        a = 0.875 + 0.0268 * exp((peak - 665) / 40.7)
+        alpha = 1 / (
+            np.exp(A * (a - x)) + np.exp(20.85 * (0.9101 - x)) +
+            np.exp(-10.37 * (1.1123 - x) + 0.5343)
+        )
+        b = 317 - 1.149 * peak + 0.00124 * peak**2
+        beta = 0.37 * np.exp(-((wavelengths - (216.7 + 0.287 * peak)) / b)**2)
+
+    else:
+        raise ValueError(template)
+
+    sensitivity = alpha + beta
+    return sensitivity / sensitivity.sum()
 
 
 def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
