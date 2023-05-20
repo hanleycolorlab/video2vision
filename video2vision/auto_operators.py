@@ -301,6 +301,12 @@ class AutoAlign(Warp, AutoOperator):
 
         return best_warped
 
+    def release(self):
+        if self.coe is None:
+            raise RuntimeError(
+                'Pipeline ended before AutoAlign found a viable alignment.'
+            )
+
     def _to_json(self) -> Dict:
         return {
             'class': self.__class__.__name__,
@@ -418,6 +424,12 @@ class AutoLinearize(AutoOperator):
         # sample points in the new image.
         return warp.apply_points(self.sample_points), t
 
+    def release(self):
+        if self.op is None:
+            raise RuntimeError(
+                'Pipeline ended before AutoLinearize found ARUCO markers.'
+            )
+
     def _to_json(self) -> Dict:
         return {
             'class': self.__class__.__name__,
@@ -530,9 +542,9 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             # This is in place to handle when UV, VIS videos have different
             # length.
             with _coerce_to_4dim(source), _coerce_to_4dim(control):
-                n_f = min(source['image'].shape[2], control['image'].shape[2])
-                source['image'] = source['image'][:, :, :n_f, :]
-                control['image'] = control['image'][:, :, :n_f, :]
+                nf = min(source['image'].shape[2], control['image'].shape[2])
+                source['image'] = source['image'][:, :, :nf, :]
+                control['image'] = control['image'][:, :, :nf, :]
 
             return super().apply(source, control)
 
@@ -548,6 +560,12 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
 
         source_motion = self._detect_motion(source, self.source_background)
         control_motion = self._detect_motion(control, self.control_background)
+
+        # Note the need to trim in case source, control have different number
+        # of frames.
+        with _coerce_to_4dim(source), _coerce_to_4dim(control):
+            nf = min(source['image'].shape[2], control['image'].shape[2])
+        source_motion, control_motion = source_motion[:nf], control_motion[:nf]
 
         # We need to ensure that, under all possible time shifts, at least some
         # frames with motion will be available to compare. If they do not, we
@@ -632,6 +650,13 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         self.coe, self.time_shift = best_coe, best_shift
 
         return self.apply(source, control)
+
+    def release(self):
+        if self.coe is None:
+            raise RuntimeError(
+                'Pipeline ended before AutoTemporalAlign found a viable '
+                'alignment.'
+            )
 
     def reset(self):
         self.buff = None

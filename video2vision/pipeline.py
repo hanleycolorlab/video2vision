@@ -171,15 +171,19 @@ class Pipeline(nx.DiGraph):
 
         return pipe
 
-    def release_writers(self):
+    def release(self):
         '''
-        Releases the writers. This should be called when writing video to disk,
-        after you have written all the frames you need to write. Without this
-        call, the video will not save properly. This method is called by the
-        :meth:`run` method automatically when it's finished.
+        Releases the operators. This triggers various cleanup operations that
+        should take place after the pipeline has been run, including:
+
+         * Releasing the :class:`Writer`s. This should be called when writing
+           video to disk, after you have written all the frames you need to
+           write. Without this call, the video will not save properly.
+         * Raising an error if any :class:`AutoOperator` has not found its
+           proper parameters.
         '''
-        for writer in self.get_writers():
-            writer.release()
+        for op in self.nodes.values():
+            op['operator'].release()
 
     def _reset_all_inputs(self):
         '''
@@ -258,7 +262,7 @@ class Pipeline(nx.DiGraph):
                     # Reset the inputs to this operator.
                     self._reset_inputs(op)
 
-        self.release_writers()
+        self.release()
 
         total_runtime = time.perf_counter() - start_time
         op_times['pipeline'] = total_runtime - sum(op_times.values())

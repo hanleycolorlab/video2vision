@@ -20,6 +20,9 @@ class AutoAlignTest(unittest.TestCase):
     def test_handling_with_aruco(self):
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
 
+        with self.assertRaises(RuntimeError):
+            align_op.release()
+
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image_path = os.path.join(data_root, 'marker_sample_1.jpg')
         image = v2v.load(image_path)
@@ -69,6 +72,8 @@ class AutoAlignTest(unittest.TestCase):
         image_crop = image[::-1][500:-500, 500:-500].astype(np.int64)
         self.assertTrue(np.abs(out_crop - image_crop).mean() <= 1)
 
+        align_op.release()
+
         # Test that it raises a RuntimeError if pointed to an image with no
         # ARUCO markers in it.
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
@@ -86,6 +91,9 @@ class AutoAlignTest(unittest.TestCase):
 
     def test_handling_with_ecc(self):
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []])
+
+        with self.assertRaises(RuntimeError):
+            align_op.release()
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
         image_path = os.path.join(data_root, 'uv_sample.jpg')
@@ -141,6 +149,8 @@ class AutoAlignTest(unittest.TestCase):
         out_crop = out_dict['image'][500:-500, 500:-500].astype(np.int64)
         image_crop = image[::-1][500:-500, 500:-500].astype(np.int64)
         self.assertTrue(np.abs(out_crop - image_crop).mean() <= 1)
+
+        align_op.release()
 
         # TODO: Add video test
 
@@ -229,6 +239,9 @@ class AutoLinearize(unittest.TestCase):
             method='poly',
         )
 
+        with self.assertRaises(RuntimeError):
+            line_op.release()
+
         # Put the data through the operator.
         image = line_op(image)
         self.assertEqual(image.get('dummy', 0), 1)
@@ -241,6 +254,8 @@ class AutoLinearize(unittest.TestCase):
         out = line_op({'image': image, 'dummy': 2})
         self.assertEqual(out.get('dummy', 0), 2)
         self.assertTrue((np.abs(out['image']) <= 1e-2).all())
+
+        line_op.release()
 
     def test_handling_powerlaw(self):
         '''
@@ -261,6 +276,9 @@ class AutoLinearize(unittest.TestCase):
             method='power',
         )
 
+        with self.assertRaises(RuntimeError):
+            line_op.release()
+
         # Put the data through the operator. This can raise a harmless
         # RuntimeWarning caused by an overflow.
         with warnings.catch_warnings():
@@ -276,6 +294,8 @@ class AutoLinearize(unittest.TestCase):
         image = np.ones((500, 500, 1), dtype=np.float32)
         out = line_op(image)
         self.assertTrue((np.abs(out['image'] - 5) <= 1e-2).all())
+
+        line_op.release()
 
     def test_hold(self):
         '''
@@ -467,6 +487,9 @@ class AutoTemporalAlignTest(unittest.TestCase):
     def test_handling(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
+        with self.assertRaises(RuntimeError):
+            align_op.release()
+
         image = self._build_image()
         data_dict = {
             'image': np.stack((np.zeros_like(image), image), axis=2),
@@ -525,6 +548,8 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertTrue(np.abs(out_crop - 32 - image_crop).mean() <= 1)
         self.assertEqual(out_dict.get('names', 0), ['d-a', 'e-b'])
 
+        align_op.release()
+
     def test_without_time_shift(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
@@ -559,6 +584,8 @@ class AutoTemporalAlignTest(unittest.TestCase):
         out_crop = out_dict['image'][32:-32, 32:-32, 0]
         image_crop = image[32:-32, 32:-32]
         self.assertTrue(np.abs(out_crop - image_crop).mean() <= 1)
+
+        align_op.release()
 
     def test_motion_detection(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])

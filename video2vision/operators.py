@@ -125,6 +125,14 @@ class Operator:
     def apply_points(self, pts: np.ndarray) -> np.ndarray:
         raise RuntimeError()
 
+    def release(self):
+        '''
+        This method is used to notify an :class:`Operator` that the pipeline
+        has finished processing and any cleanup operations that need to be
+        performed should take place.
+        '''
+        return
+
     def reset(self):
         '''
         This method is used to notify an :class:`Operator` that the pipeline is
