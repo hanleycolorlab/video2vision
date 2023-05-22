@@ -224,6 +224,8 @@ class LinearMapTest(unittest.TestCase):
         apis_sense_path = os.path.join(data_root, 'apis_sensitivities.csv')
         apis_sense = _load_csv(apis_sense_path)
         ref_path = os.path.join(data_root, 'material_reflectances.csv')
+        if not os.path.exists(ref_path):
+            return
         reflectances = _load_csv(ref_path)
         ref_train, ref_test = reflectances[:, :-250], reflectances[:, -250:]
 
