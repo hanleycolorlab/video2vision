@@ -438,7 +438,7 @@ class UBGRtoXYZ(Operator):
 
     This is taken from:
 
-        Endeler and Mielke, 2005. "Comparing Entire Colour Patterns as Birds
+        Endler and Mielke, 2005. "Comparing Entire Colour Patterns as Birds
         See Them." *Biological Journal of the Linnean Society*, Vol. 86 No. 4,
         pp. 405-431.
     '''
