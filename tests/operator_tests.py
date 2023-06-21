@@ -3,7 +3,7 @@ Note: when writing tests, make sure that the height and width of the images are
 different, to detect height-width flip-flops.
 '''
 import json
-from math import sqrt
+from math import e, sqrt
 import os
 import tempfile
 import unittest
@@ -462,6 +462,104 @@ class ResizeTest(unittest.TestCase):
         rest_op_image = restored_op({'image': image})['image']
 
         self.assertTrue((orig_op_image == rest_op_image).all())
+
+
+class ToRNLTest(unittest.TestCase):
+    def test_handling(self):
+        op = v2v.ToRNL(
+            illuminance=1.,
+            background=1.,
+            photo_sensitivity=np.ones((1, 5), dtype=np.float32),
+            photo_density=np.ones(5, dtype=np.float32),
+            weber_fraction=1.
+        )
+
+        with self.assertRaises(NotImplementedError):
+            op({'image': np.ones((1, 1, 5), dtype=np.float32)})
+
+        # 3-channel test
+
+        op = v2v.ToRNL(
+            illuminance=1.,
+            background=1.,
+            photo_sensitivity=np.ones((1, 3), dtype=np.float32),
+            photo_density=np.ones(3, dtype=np.float32),
+            weber_fraction=1.
+        )
+
+        out = op({
+            'image': np.ones((1, 1, 3), dtype=np.float32),
+            'dummy': 1,
+        })
+
+        self.assertTrue(isinstance(out, dict))
+        self.assertEqual(out.keys(), {'dummy', 'image'})
+        self.assertTrue(out['dummy'], 1)
+        self.assertTrue(isinstance(out['image'], np.ndarray))
+        self.assertEqual(out['image'].shape, (1, 1, 2))
+        self.assertTrue(np.isclose(out['image'], 0).all())
+
+        # 4-channel test
+
+        op = v2v.ToRNL(
+            illuminance=1.,
+            background=1.,
+            photo_sensitivity=np.ones((1, 4), dtype=np.float32),
+            photo_density=np.ones(4, dtype=np.float32),
+            weber_fraction=1.
+        )
+
+        out = op({
+            'image': np.ones((1, 1, 4), dtype=np.float32),
+            'dummy': 1,
+        })
+
+        self.assertTrue(isinstance(out, dict))
+        self.assertEqual(out.keys(), {'dummy', 'image'})
+        self.assertTrue(out['dummy'], 1)
+        self.assertTrue(isinstance(out['image'], np.ndarray))
+        self.assertEqual(out['image'].shape, (1, 1, 3))
+        self.assertTrue(np.isclose(out['image'], 0).all())
+
+    def test_apply_points(self):
+        '''
+        Tests the apply_points method.
+        '''
+        op = v2v.ToRNL(
+            illuminance=1.,
+            background=1.,
+            photo_sensitivity=np.ones((1, 4), dtype=np.float32),
+            photo_density=np.ones(4, dtype=np.float32),
+            weber_fraction=1.
+        )
+
+        # Test apply_points
+        xs, ys = np.meshgrid(np.arange(300), np.arange(200))
+        xs, ys = xs.flatten(), ys.flatten()
+        xys = np.stack((xs, ys), axis=1)
+        self.assertTrue((xys == op.apply_points(xys)).all())
+
+    def test_serialization(self):
+        '''
+        Tests serialization to disk and back.
+        '''
+        op = v2v.ToRNL(
+            illuminance=1.,
+            background=1.,
+            photo_sensitivity=np.ones((1, 4), dtype=np.float32),
+            photo_density=np.ones(4, dtype=np.float32),
+            weber_fraction=1.
+        )
+
+        op_dict = json.loads(json.dumps(op._to_json()))
+        op_class = v2v.OPERATOR_REGISTRY.get(op_dict.pop('class'))
+        restored_op = op_class(**op_dict)
+
+        image = np.random.uniform(0, 1, (4, 5, 4)).astype(np.float32)
+        orig_op_out = op({'image': image})
+        rest_op_out = restored_op({'image': image})
+
+        self.assertTrue((orig_op_out['image'] == rest_op_out['image']).all())
 
 
 class UBGRtoXYZTest(unittest.TestCase):

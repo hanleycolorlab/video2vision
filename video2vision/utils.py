@@ -3,7 +3,7 @@ from copy import copy
 import csv
 from math import exp, floor, isnan
 from statistics import mean
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -12,7 +12,7 @@ _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
     'detect_motion', 'extract_samples', 'get_photoreceptor_template',
-    'locate_aruco_markers', 'read_jazirrad_file'
+    'locate_aruco_markers', 'read_jazirrad_file', 'to_rnl'
 ]
 
 
@@ -513,6 +513,77 @@ def read_jazirrad_file(path: str) -> Tuple[np.ndarray, np.ndarray]:
     response = np.array([float(r) for r in response], dtype=np.float32)
 
     return wavelengths, response
+
+
+def to_rnl(qc: np.ndarray, photo_density: np.ndarray,
+           photo_sensitivity: np.ndarray,
+           background: Union[float, np.ndarray] = 0.5,
+           weber_fraction: float = 0.1,
+           illuminance: Union[float, np.ndarray] = 1.0) -> np.ndarray:
+    '''
+    Converts quantum catches to the RNL color space, using equations A1.25 thru
+    A1.29 in Appendix A of:
+
+        Renoult et al., 2017. "Colour Spaces in Ecology and Evolutionary
+        Biology." *Biological Reviews*, Vol. 92, pp. 292-315.
+
+    Args:
+        qc (:class:`numpy.ndarray`): Catch of photoreceptor, in shape (samples,
+        band).
+        photo_density (:class:`numpy.ndarray`): Relative density of
+        photoreceptors, in shape (band,).
+        photo_sensitivity (:class:`numpy.ndarray`): Photoreceptor sensitivity,
+        in shape (wavelength, band).
+        background (float or :class:`numpy.ndarray`): Background reflectance.
+        weber_fraction (float): Weber fraction, denoting the proportion of a
+        value that must change for the change to be detectable by the organism.
+        illuminance (float or :class:`numpy.ndarray`): Illuminance.
+    '''
+    if qc.ndim == 1:
+        qc = qc.reshape(-1, 1)
+    if photo_sensitivity.ndim == 1:
+        photo_sensitivity = photo_sensitivity.reshape(-1, 1)
+    if len({photo_sensitivity.shape[1], qc.shape[1], len(photo_density)}) > 1:
+        raise ValueError('Mismatch in number of bands')
+
+    background = (background * photo_sensitivity * illuminance)
+    background = background.sum(0, keepdims=True)
+    s = np.log(qc / background)  # A 1.6
+    e = weber_fraction * np.sqrt(photo_density[-1]) / np.sqrt(photo_density)
+
+    if qc.shape[1] == 4:
+        sum_of_e1 = e[2]**2 + e[3]**2
+        sum_of_e2 = (e[2] * e[3])**2 + (e[1] * e[2])**2 + (e[1] * e[3])**2
+        sum_of_e3 = (
+            (e[1] * e[2] * e[3])**2 + (e[0] * e[2] * e[3])**2 +
+            (e[0] * e[1] * e[3])**2 + (e[0] * e[1] * e[2])**2
+        )
+        A = np.sqrt(sum_of_e2 / sum_of_e3)
+        a = (e[1] * e[2])**2 / sum_of_e2
+        b = (e[1] * e[3])**2 / sum_of_e2
+        c = (e[2] * e[3])**2 / sum_of_e2
+        x = np.sqrt(1 / (e[2]**2 + e[3]**2)) * (s[:, 3] - s[:, 2])
+        y = (
+            np.sqrt(sum_of_e1 / sum_of_e2) *
+            (s[:, 1] - (s[:, 3] * (e[2]**2 / sum_of_e1))
+             - (s[:, 2] * (e[3]**2 / sum_of_e1)))
+        )
+        z = A * (s[:, 0] - (a * s[:, 3] + b * s[:, 2] + c * s[:, 1]))
+        return np.stack((x, y, z), axis=1)
+
+    elif qc.shape[1] == 3:
+        sum_of_e1 = e[1]**2 + e[2]**2
+        sum_of_e2 = (e[0] * e[1])**2 + (e[0] * e[2])**2 + (e[1] * e[2])**2
+        x = np.sqrt(1 / sum_of_e1) * (s[:, 2] - s[:, 1])
+        y = (
+            np.sqrt(sum_of_e1 / sum_of_e2) *
+            (s[:, 0] - (s[:, 2] * e[1]**2 / sum_of_e1)
+             - (s[:, 1] * e[2]**2 / sum_of_e1))
+        )
+        return np.stack((x, y), axis=1)
+
+    else:
+        raise NotImplementedError(qc.shape[1])
 
 
 class Registry:

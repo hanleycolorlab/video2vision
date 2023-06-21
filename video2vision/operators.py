@@ -12,12 +12,19 @@ from typing import Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 
-from .utils import _coerce_to_3dim, _coerce_to_4dim, _coerce_to_dict, Registry
+from .utils import (
+    _coerce_to_2dim,
+    _coerce_to_3dim,
+    _coerce_to_4dim,
+    _coerce_to_dict,
+    Registry,
+    to_rnl
+)
 
 __all__ = [
     'Operator', 'ConcatenateOnBands', 'HorizontalFlip', 'LinearMap',
-    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'UBGRtoXYZ',
-    'VerticalFlip',
+    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'ToRNL',
+    'UBGRtoXYZ', 'VerticalFlip',
 ]
 
 # This provides a registry of operators. This is used when saving and restoring
@@ -413,6 +420,84 @@ class Resize(Operator):
             'class': self.__class__.__name__,
             'scale': self.scale,
             'sampling_mode': self.sampling_mode,
+        }
+
+
+@OPERATOR_REGISTRY.register
+class ToRNL(Operator):
+    '''
+    This operator converts a three- or four-channel image to the RNL color
+    space, as given in Appendix A of:
+
+        Renoult et al., 2017. "Colour Spaces in Ecology and Evolutionary
+        Biology." *Biological Reviews*, Vol. 92, pp. 292-315.
+
+    $L^1$ distance in the RNL color space should correspond to distance in
+    perceptual space.
+    '''
+    def __init__(self, photo_density: np.ndarray,
+                 photo_sensitivity: np.ndarray,
+                 background: Union[float, np.ndarray] = 0.5,
+                 weber_fraction: float = 0.1,
+                 illuminance: Union[float, np.ndarray] = 1.0):
+        '''
+        Args:
+            photo_density (:class:`numpy.ndarray`): Relative density of
+            photoreceptors, in shape (band,).
+            photo_sensitivity (:class:`numpy.ndarray`): Photoreceptor
+            sensitivity, in shape (wavelength, band).
+            background (float or :class:`numpy.ndarray`): Background
+            reflectance.
+            weber_fraction (float): Weber fraction, denoting the proportion of
+            a value that must change for the change to be detectable by the
+            organism.
+            illuminance (float or :class:`numpy.ndarray`): Illuminance.
+        '''
+        self.photo_density = np.array(photo_density).astype(np.float32)
+        self.photo_sensitivity = np.array(photo_sensitivity).astype(np.float32)
+        if isinstance(background, float):
+            self.background = background
+        else:
+            self.background = np.array(background).astype(np.float32)
+        self.weber_fraction = weber_fraction
+        if isinstance(illuminance, float):
+            self.illuminance = illuminance
+        else:
+            self.illuminance = np.array(illuminance).astype(np.float32)
+
+    def apply(self, x: Dict) -> Dict:
+        with _coerce_to_2dim(x):
+            x['image'] = to_rnl(
+                x['image'],
+                photo_density=self.photo_density,
+                photo_sensitivity=self.photo_sensitivity,
+                background=self.background,
+                weber_fraction=self.weber_fraction,
+                illuminance=self.illuminance,
+            )
+
+        return x
+
+    def apply_points(self, pts: np.ndarray) -> np.ndarray:
+        return pts
+
+    def _to_json(self) -> Dict:
+        if isinstance(self.background, float):
+            bg = self.background
+        else:
+            bg = self.background.tolist()
+        if isinstance(self.illuminance, float):
+            illum = self.illuminance
+        else:
+            illum = self.illuminance.tolist()
+
+        return {
+            'class': self.__class__.__name__,
+            'photo_density': self.photo_density.tolist(),
+            'photo_sensitivity': self.photo_sensitivity.tolist(),
+            'background': bg,
+            'weber_fraction': self.weber_fraction,
+            'illuminance': illum,
         }
 
 
