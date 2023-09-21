@@ -153,6 +153,7 @@ def save(image: np.ndarray, path: str):
         raise NotImplementedError('Saving in raw form is not supported')
 
     else:
+        image = np.clip(image, 0, 255).astype(np.uint8)
         return cv2.imwrite(path, image)
 
 
