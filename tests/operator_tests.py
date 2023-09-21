@@ -221,7 +221,9 @@ class LinearMapTest(unittest.TestCase):
         data_root = os.path.join(os.path.dirname(__file__), '../data')
         cam_sense_path = os.path.join(data_root, 'camera_sensitivities.csv')
         cam_sense = _load_csv(cam_sense_path)
-        apis_sense_path = os.path.join(data_root, 'apis_sensitivities.csv')
+        apis_sense_path = os.path.join(
+            data_root, 'animal_sensitivities/apis_sensitivities.csv'
+        )
         apis_sense = _load_csv(apis_sense_path)
         ref_path = os.path.join(data_root, 'material_reflectances.csv')
         if not os.path.exists(ref_path):
