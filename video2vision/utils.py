@@ -244,6 +244,7 @@ def extract_samples(image: np.ndarray, points: np.ndarray, width: int = 10) \
         if it is a video.
         width (int): The width of the sample regions.
     '''
+    # TODO: Refactor image to dict
     image = _coerce_to_image(image)
     points = np.array(points).astype(np.int64)
     samples = np.empty((points.shape[0], image.shape[-1]), dtype=np.float32)
@@ -515,11 +516,12 @@ def read_jazirrad_file(path: str) -> Tuple[np.ndarray, np.ndarray]:
     return wavelengths, response
 
 
-def to_rnl(qc: np.ndarray, photo_density: np.ndarray,
+def to_rnl(image: Dict, photo_density: np.ndarray,
            photo_sensitivity: np.ndarray,
            background: Union[float, np.ndarray] = 0.5,
            weber_fraction: float = 0.1,
-           illuminance: Union[float, np.ndarray] = 1.0) -> np.ndarray:
+           illuminance: Union[float, np.ndarray] = 1.0,
+           scale_by_magnitude: bool = False) -> np.ndarray:
     '''
     Converts quantum catches to the RNL color space, using equations A1.25 thru
     A1.29 in Appendix A of:
@@ -527,9 +529,13 @@ def to_rnl(qc: np.ndarray, photo_density: np.ndarray,
         Renoult et al., 2017. "Colour Spaces in Ecology and Evolutionary
         Biology." *Biological Reviews*, Vol. 92, pp. 292-315.
 
+    The original equations produce outputs that are scaled [-a, a], where the
+    exact value of a varies depending on input parameters. This function
+    rescales the outputs to the range [0, 1], using the minimum and maximum
+    possible outputs.
+
     Args:
-        qc (:class:`numpy.ndarray`): Catch of photoreceptor, in shape (samples,
-        band).
+        image (dict): Catch of photoreceptor.
         photo_density (:class:`numpy.ndarray`): Relative density of
         photoreceptors, in shape (band,).
         photo_sensitivity (:class:`numpy.ndarray`): Photoreceptor sensitivity,
@@ -538,52 +544,104 @@ def to_rnl(qc: np.ndarray, photo_density: np.ndarray,
         weber_fraction (float): Weber fraction, denoting the proportion of a
         value that must change for the change to be detectable by the organism.
         illuminance (float or :class:`numpy.ndarray`): Illuminance.
+        scale_by_magnitude (bool): Whether to scale the output values by the
+        magnitude of the input values. This ensures that dark inputs are mapped
+        to dark outputs.
     '''
-    if qc.ndim == 1:
-        qc = qc.reshape(-1, 1)
     if photo_sensitivity.ndim == 1:
         photo_sensitivity = photo_sensitivity.reshape(-1, 1)
-    if len({photo_sensitivity.shape[1], qc.shape[1], len(photo_density)}) > 1:
-        raise ValueError('Mismatch in number of bands')
+    image = copy(image)
 
-    background = (background * photo_sensitivity * illuminance)
-    background = background.sum(0, keepdims=True)
-    s = np.log(qc / background)  # A 1.6
-    e = weber_fraction * np.sqrt(photo_density[-1]) / np.sqrt(photo_density)
+    with _coerce_to_2dim(image):
+        # Since we're going to apply a log transform, we need this to be > 0.
+        qc = np.clip(image['image'], 0.5 / 256, None)
 
-    if qc.shape[1] == 4:
-        sum_of_e1 = e[2]**2 + e[3]**2
-        sum_of_e2 = (e[2] * e[3])**2 + (e[1] * e[2])**2 + (e[1] * e[3])**2
-        sum_of_e3 = (
-            (e[1] * e[2] * e[3])**2 + (e[0] * e[2] * e[3])**2 +
-            (e[0] * e[1] * e[3])**2 + (e[0] * e[1] * e[2])**2
-        )
-        A = np.sqrt(sum_of_e2 / sum_of_e3)
-        a = (e[1] * e[2])**2 / sum_of_e2
-        b = (e[1] * e[3])**2 / sum_of_e2
-        c = (e[2] * e[3])**2 / sum_of_e2
-        x = np.sqrt(1 / (e[2]**2 + e[3]**2)) * (s[:, 3] - s[:, 2])
-        y = (
-            np.sqrt(sum_of_e1 / sum_of_e2) *
-            (s[:, 1] - (s[:, 3] * (e[2]**2 / sum_of_e1))
-             - (s[:, 2] * (e[3]**2 / sum_of_e1)))
-        )
-        z = A * (s[:, 0] - (a * s[:, 3] + b * s[:, 2] + c * s[:, 1]))
-        return np.stack((x, y, z), axis=1)
+        n_bands = {photo_sensitivity.shape[1], qc.shape[1], len(photo_density)}
+        if len(n_bands) > 1:
+            raise ValueError('Mismatch in number of bands')
 
-    elif qc.shape[1] == 3:
-        sum_of_e1 = e[1]**2 + e[2]**2
-        sum_of_e2 = (e[0] * e[1])**2 + (e[0] * e[2])**2 + (e[1] * e[2])**2
-        x = np.sqrt(1 / sum_of_e1) * (s[:, 2] - s[:, 1])
-        y = (
-            np.sqrt(sum_of_e1 / sum_of_e2) *
-            (s[:, 0] - (s[:, 2] * e[1]**2 / sum_of_e1)
-             - (s[:, 1] * e[2]**2 / sum_of_e1))
-        )
-        return np.stack((x, y), axis=1)
+        background = (background * photo_sensitivity * illuminance)
+        background = background.sum(0, keepdims=True)
+        s = np.log(qc / background)  # A 1.6
+        e = weber_fraction * np.sqrt(photo_density[-1] / photo_density)
+        # We want to track the range of the outputs so we can rescale to [0, 1]
+        min_s = np.log((0.5 / 256) / background.flatten())
+        max_s = np.log(1 / background.flatten())
 
-    else:
-        raise NotImplementedError(qc.shape[1])
+        if qc.shape[1] == 4:
+            sum_of_e1 = e[2]**2 + e[3]**2
+            sum_of_e2 = (e[2] * e[3])**2 + (e[1] * e[2])**2 + (e[1] * e[3])**2
+            a = (e[1] * e[2])**2 / sum_of_e2
+            b = (e[1] * e[3])**2 / sum_of_e2
+            c = (e[2] * e[3])**2 / sum_of_e2
+
+            # x is sqrt(1 / (e[2]**2 + e[3]**2)) * (s[:, 3] - s[:, 2]).
+            # However, that outer coefficient is lost when we rescale by the
+            # minimum and maximum values to squash to the range [0, 1].
+            x = s[:, 3] - s[:, 2]
+            min_x, max_x = min_s[3] - max_s[2], max_s[3] - min_s[2]
+
+            # Again, y has an outer coefficient of sqrt(sum_of_e1 / sum_of_e2),
+            # which is lost in the rescaling.
+            y = (
+                s[:, 1] - (s[:, 3] * (e[2]**2 / sum_of_e1))
+                - (s[:, 2] * (e[3]**2 / sum_of_e1))
+            )
+            min_y = (
+                min_s[1] - (max_s[3] * (e[2]**2 / sum_of_e1))
+                - (max_s[2] * (e[3]**2 / sum_of_e1))
+            )
+            max_y = (
+                max_s[1] - (min_s[3] * (e[2]**2 / sum_of_e1))
+                - (min_s[2] * (e[3]**2 / sum_of_e1))
+            )
+
+            # z has outer coefficient sqrt(sum_of_e2 / sum_of_e3), which is
+            # lost.
+            z = (s[:, 0] - (a * s[:, 3] + b * s[:, 2] + c * s[:, 1]))
+            min_z = (min_s[0] - (a * max_s[3] + b * max_s[2] + c * max_s[1]))
+            max_z = (max_s[0] - (a * min_s[3] + b * min_s[2] + c * min_s[1]))
+
+            max_xyz = np.array([max_x, max_y, max_z]).reshape(1, -1)
+            min_xyz = np.array([min_x, min_y, min_z]).reshape(1, -1)
+            image['image'] = (
+                (np.stack((x, y, z), axis=1) - min_xyz) / (max_xyz - min_xyz)
+            )
+
+        elif qc.shape[1] == 3:
+            sum_of_e1 = e[1]**2 + e[2]**2
+
+            x = s[:, 2] - s[:, 1]
+            min_x, max_x = min_s[2] - max_s[1], max_s[2] - min_s[1]
+
+            y = (
+                s[:, 0] - (s[:, 2] * e[1]**2 / sum_of_e1)
+                - (s[:, 1] * e[2]**2 / sum_of_e1)
+            )
+            min_y = (
+                min_s[0] - (max_s[2] * e[1]**2 / sum_of_e1)
+                - (max_s[1] * e[2]**2 / sum_of_e1)
+            )
+            max_y = (
+                max_s[0] - (min_s[2] * e[1]**2 / sum_of_e1)
+                - (min_s[1] * e[2]**2 / sum_of_e1)
+            )
+
+            min_xy = np.array([min_x, min_y]).reshape(1, -1)
+            max_xy = np.array([max_x, max_y]).reshape(1, -1)
+
+            image['image'] = (
+                (np.stack((x, y), axis=1) - min_xy) / (max_xy - min_xy)
+            )
+
+        else:
+            raise NotImplementedError(qc.shape[1])
+
+        if scale_by_magnitude:
+            scale = qc.mean(axis=1) / (image['image'].mean(axis=1) + 1e-6)
+            image['image'] *= scale.reshape(-1, 1)
+
+    return image
 
 
 class Registry:
