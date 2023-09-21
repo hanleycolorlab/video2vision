@@ -35,12 +35,12 @@ class PipelineTest(unittest.TestCase):
 
         temp_path = os.path.join(in_root, '1.png')
         self.image_1 = np.zeros((8, 8, 3), dtype=np.uint8)
-        self.image_1[:2, :2] = (255, 255, 0)
+        self.image_1[:2, :2] = (1, 1, 0)
         v2v.save(self.image_1, temp_path)
 
         temp_path = os.path.join(in_root, '2.png')
         self.image_2 = np.zeros((8, 8, 3), dtype=np.uint8)
-        self.image_2[2:4, 2:4] = (0, 255, 255)
+        self.image_2[2:4, 2:4] = (0, 1, 1)
         v2v.save(self.image_2, temp_path)
 
         # Create output directories
@@ -88,12 +88,12 @@ class PipelineTest(unittest.TestCase):
             rtn_1, rtn_2 = temp_path
 
         self.assertTrue(rtn_1.shape, (8, 8, 3))
-        rot_should_be_1 = np.rollaxis(self.image_1, 1, 0)[::-1]
-        self.assertTrue((rtn_1 == rot_should_be_1).all())
+        rot_should_be_1 = (255. / 256.) * np.rollaxis(self.image_1, 1, 0)[::-1]
+        self.assertTrue(np.isclose(rtn_1, rot_should_be_1).all())
 
         self.assertTrue(rtn_2.shape, (8, 8, 3))
-        rot_should_be_2 = np.rollaxis(self.image_2, 1, 0)[::-1]
-        self.assertTrue((rtn_2 == rot_should_be_2).all())
+        rot_should_be_2 = (255. / 256.) * np.rollaxis(self.image_2, 1, 0)[::-1]
+        self.assertTrue(np.isclose(rtn_2, rot_should_be_2).all())
 
     def _check_output_2(self, temp_path: str):
         if isinstance(temp_path, str):
@@ -107,18 +107,18 @@ class PipelineTest(unittest.TestCase):
 
         self.assertTrue(rtn_1.shape, (8, 8, 3))
         zeros = np.zeros((1, 8, 3), dtype=np.uint8)
-        rot_should_be_1 = np.rollaxis(self.image_1, 1, 0)[::-1]
+        rot_should_be_1 = (255. / 256.) * np.rollaxis(self.image_1, 1, 0)[::-1]
         trans_should_be_1 = np.concatenate(
             (zeros, rot_should_be_1[:-1]), axis=0
         )
-        self.assertTrue((rtn_1 == trans_should_be_1).all())
+        self.assertTrue(np.isclose(rtn_1, trans_should_be_1).all())
 
         self.assertTrue(rtn_2.shape, (8, 8, 3))
-        rot_should_be_2 = np.rollaxis(self.image_2, 1, 0)[::-1]
+        rot_should_be_2 = (255. / 256.) * np.rollaxis(self.image_2, 1, 0)[::-1]
         trans_should_be_2 = np.concatenate(
             (zeros, rot_should_be_2[:-1]), axis=0
         )
-        self.assertTrue((rtn_2 == trans_should_be_2).all())
+        self.assertTrue(np.isclose(rtn_2, trans_should_be_2).all())
 
     def _check_outputs(self, temp_path: str):
         self._check_output_1(temp_path)
