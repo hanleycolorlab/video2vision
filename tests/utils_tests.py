@@ -325,7 +325,7 @@ class UtilitiesTests(unittest.TestCase):
     def test_to_rnl(self):
         with self.assertRaises(NotImplementedError):
             v2v.utils.to_rnl(
-                np.ones((1, 5), dtype=np.float32),
+                {'image': np.ones((1, 5), dtype=np.float32)},
                 illuminance=1.,
                 background=1.,
                 photo_sensitivity=np.ones((1, 5), dtype=np.float32),
@@ -334,26 +334,28 @@ class UtilitiesTests(unittest.TestCase):
             )
 
         out = v2v.utils.to_rnl(
-            np.ones((1, 4), dtype=np.float32),
+            {'image': np.ones((1, 4), dtype=np.float32)},
             illuminance=1.,
             background=1.,
             photo_sensitivity=np.ones((1, 4), dtype=np.float32),
             photo_density=np.ones(4, dtype=np.float32),
             weber_fraction=1.,
         )
-        self.assertEqual(out.shape, (1, 3))
-        self.assertTrue(np.isclose(out, 0).all())
+        self.assertEqual(out.keys(), {'image'})
+        self.assertEqual(out['image'].shape, (1, 3))
+        self.assertTrue(np.isclose(out['image'], 0.5).all(), out['image'])
 
         out = v2v.utils.to_rnl(
-            np.ones((1, 3), dtype=np.float32),
+            {'image': np.ones((1, 3), dtype=np.float32)},
             illuminance=1.,
             background=1.,
             photo_sensitivity=np.ones((1, 3), dtype=np.float32),
             photo_density=np.ones(3, dtype=np.float32),
             weber_fraction=1.,
         )
-        self.assertEqual(out.shape, (1, 2))
-        self.assertTrue(np.isclose(out, 0).all())
+        self.assertEqual(out.keys(), {'image'})
+        self.assertEqual(out['image'].shape, (1, 2))
+        self.assertTrue(np.isclose(out['image'], 0.5).all())
 
 
 if __name__ == '__main__':

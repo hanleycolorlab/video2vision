@@ -13,7 +13,6 @@ import cv2
 import numpy as np
 
 from .utils import (
-    _coerce_to_2dim,
     _coerce_to_3dim,
     _coerce_to_4dim,
     _coerce_to_dict,
@@ -439,7 +438,8 @@ class ToRNL(Operator):
                  photo_sensitivity: np.ndarray,
                  background: Union[float, np.ndarray] = 0.5,
                  weber_fraction: float = 0.1,
-                 illuminance: Union[float, np.ndarray] = 1.0):
+                 illuminance: Union[float, np.ndarray] = 1.0,
+                 scale_by_magnitude: bool = False):
         '''
         Args:
             photo_density (:class:`numpy.ndarray`): Relative density of
@@ -452,31 +452,35 @@ class ToRNL(Operator):
             a value that must change for the change to be detectable by the
             organism.
             illuminance (float or :class:`numpy.ndarray`): Illuminance.
+            scale_by_magnitude (bool): Whether to scale the output values by
+            the magnitude of the input values. This ensures that dark inputs
+            are mapped to dark outputs.
         '''
         self.photo_density = np.array(photo_density).astype(np.float32)
         self.photo_sensitivity = np.array(photo_sensitivity).astype(np.float32)
+        self.scale_by_magnitude = scale_by_magnitude
+        self.weber_fraction = weber_fraction
+
         if isinstance(background, float):
             self.background = background
         else:
             self.background = np.array(background).astype(np.float32)
-        self.weber_fraction = weber_fraction
+
         if isinstance(illuminance, float):
             self.illuminance = illuminance
         else:
             self.illuminance = np.array(illuminance).astype(np.float32)
 
     def apply(self, x: Dict) -> Dict:
-        with _coerce_to_2dim(x):
-            x['image'] = to_rnl(
-                x['image'],
-                photo_density=self.photo_density,
-                photo_sensitivity=self.photo_sensitivity,
-                background=self.background,
-                weber_fraction=self.weber_fraction,
-                illuminance=self.illuminance,
-            )
-
-        return x
+        return to_rnl(
+            x,
+            photo_density=self.photo_density,
+            photo_sensitivity=self.photo_sensitivity,
+            background=self.background,
+            weber_fraction=self.weber_fraction,
+            illuminance=self.illuminance,
+            scale_by_magnitude=self.scale_by_magnitude,
+        )
 
     def apply_points(self, pts: np.ndarray) -> np.ndarray:
         return pts
@@ -498,6 +502,7 @@ class ToRNL(Operator):
             'background': bg,
             'weber_fraction': self.weber_fraction,
             'illuminance': illum,
+            'scale_by_magnitude': self.scale_by_magnitude,
         }
 
 

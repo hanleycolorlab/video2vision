@@ -3,7 +3,7 @@ Note: when writing tests, make sure that the height and width of the images are
 different, to detect height-width flip-flops.
 '''
 import json
-from math import e, sqrt
+from math import sqrt
 import os
 import tempfile
 import unittest
@@ -497,7 +497,7 @@ class ToRNLTest(unittest.TestCase):
         self.assertTrue(out['dummy'], 1)
         self.assertTrue(isinstance(out['image'], np.ndarray))
         self.assertEqual(out['image'].shape, (1, 1, 2))
-        self.assertTrue(np.isclose(out['image'], 0).all())
+        self.assertTrue(np.isclose(out['image'], 0.5).all())
 
         # 4-channel test
 
@@ -519,7 +519,7 @@ class ToRNLTest(unittest.TestCase):
         self.assertTrue(out['dummy'], 1)
         self.assertTrue(isinstance(out['image'], np.ndarray))
         self.assertEqual(out['image'].shape, (1, 1, 3))
-        self.assertTrue(np.isclose(out['image'], 0).all())
+        self.assertTrue(np.isclose(out['image'], 0.5).all())
 
     def test_apply_points(self):
         '''
