@@ -13,11 +13,11 @@ import cv2
 import numpy as np
 
 from .utils import (
+    _coerce_to_2dim,
     _coerce_to_3dim,
     _coerce_to_4dim,
     _coerce_to_dict,
     Registry,
-    to_rnl
 )
 
 __all__ = [
@@ -439,6 +439,7 @@ class ToRNL(Operator):
                  background: Union[float, np.ndarray] = 0.5,
                  weber_fraction: float = 0.1,
                  illuminance: Union[float, np.ndarray] = 1.0,
+                 normalize_outputs: bool = True,
                  scale_by_magnitude: bool = False):
         '''
         Args:
@@ -452,6 +453,9 @@ class ToRNL(Operator):
             a value that must change for the change to be detectable by the
             organism.
             illuminance (float or :class:`numpy.ndarray`): Illuminance.
+            normalize_outputs (bool): Whether to normalize the outputs to the
+            range [0, 1]. If this is not set, the outputs will typically be in
+            roughly the range [-45, 45].
             scale_by_magnitude (bool): Whether to scale the output values by
             the magnitude of the input values. This ensures that dark inputs
             are mapped to dark outputs.
@@ -459,6 +463,7 @@ class ToRNL(Operator):
         self.photo_density = np.array(photo_density).astype(np.float32)
         self.photo_sensitivity = np.array(photo_sensitivity).astype(np.float32)
         self.scale_by_magnitude = scale_by_magnitude
+        self.normalize_outputs = normalize_outputs
         self.weber_fraction = weber_fraction
 
         if isinstance(background, float):
@@ -472,15 +477,101 @@ class ToRNL(Operator):
             self.illuminance = np.array(illuminance).astype(np.float32)
 
     def apply(self, x: Dict) -> Dict:
-        return to_rnl(
-            x,
-            photo_density=self.photo_density,
-            photo_sensitivity=self.photo_sensitivity,
-            background=self.background,
-            weber_fraction=self.weber_fraction,
-            illuminance=self.illuminance,
-            scale_by_magnitude=self.scale_by_magnitude,
-        )
+        with _coerce_to_2dim(x):
+            # Since we're going to apply a log transform, we need this to be
+            # positive.
+            qc = np.clip(x['image'], 0.5 / 256, None)
+
+            n_bands = {
+                self.photo_sensitivity.shape[1], qc.shape[1],
+                len(self.photo_density)
+            }
+            if len(n_bands) > 1:
+                raise ValueError('Mismatch in number of bands')
+
+            background = (
+                self.background * self.photo_sensitivity * self.illuminance
+            )
+            background = background.sum(0, keepdims=True)
+            s = np.log(qc / background)  # A 1.6
+            e = (
+                self.weber_fraction *
+                np.sqrt(self.photo_density[-1] / self.photo_density)
+            )
+
+            if qc.shape[1] == 4:
+                sum_of_e1 = e[2]**2 + e[3]**2
+                sum_of_e2 = (
+                    (e[2] * e[3])**2 + (e[1] * e[2])**2 + (e[1] * e[3])**2
+                )
+                sum_of_e3 = (
+                    (e[1] * e[2] * e[3])**2 + (e[0] * e[2] * e[3])**2 +
+                    (e[0] * e[1] * e[3])**2 + (e[0] * e[1] * e[2])**2
+                )
+                A = sqrt(sum_of_e2 / sum_of_e3)
+                a = (e[1] * e[2])**2 / sum_of_e2
+                b = (e[1] * e[3])**2 / sum_of_e2
+                c = (e[2] * e[3])**2 / sum_of_e2
+
+                out_x = s[:, 3] - s[:, 2] / sqrt(e[2]**2 + e[3]**2)
+                out_y = (
+                    sqrt(sum_of_e1 / sum_of_e2) *
+                    (s[:, 1] - (s[:, 3] * (e[2]**2 / sum_of_e1))
+                     - (s[:, 2] * (e[3]**2 / sum_of_e1)))
+                )
+                out_z = (
+                    A * (s[:, 0] - (a * s[:, 3] + b * s[:, 2] + c * s[:, 1]))
+                )
+                x['image'] = np.stack((out_x, out_y, out_z), axis=1)
+
+                if self.normalize_outputs:
+                    min_s = np.log((0.5 / 256) / background.flatten()).min()
+                    max_s = np.log(1 / background.flatten()).max()
+                    min_out = (
+                        min(1 / sqrt(sum_of_e1), sqrt(sum_of_e1 / sum_of_e2),
+                            A) * (min_s - max_s)
+                    )
+                    max_out = (
+                        max(1 / sqrt(sum_of_e1), sqrt(sum_of_e1 / sum_of_e2),
+                            A) * (max_s - min_s)
+                    )
+                    x['image'] = (x['image'] - min_out) / (max_out - min_out)
+
+            elif qc.shape[1] == 3:
+                sum_of_e1 = e[1]**2 + e[2]**2
+                sum_of_e2 = (
+                    (e[0] * e[1])**2 + (e[0] * e[2])**2 + (e[1] * e[2])**2
+                )
+
+                out_x = sqrt(1 / sum_of_e1) * (s[:, 2] - s[:, 1])
+                out_y = (
+                    sqrt(sum_of_e1 / sum_of_e2) *
+                    (s[:, 0] - (s[:, 2] * e[1]**2 / sum_of_e1)
+                     - (s[:, 1] * e[2]**2 / sum_of_e1))
+                )
+                x['image'] = np.stack((out_x, out_y), axis=1)
+
+                if self.normalize_outputs:
+                    min_s = np.log((0.5 / 256) / background.flatten()).min()
+                    max_s = np.log(1 / background.flatten()).max()
+                    min_out = (
+                        min(sqrt(1 / sum_of_e1), sqrt(sum_of_e1 / sum_of_e2))
+                        * (min_s - max_s)
+                    )
+                    max_out = (
+                        max(sqrt(1 / sum_of_e1), sqrt(sum_of_e1 / sum_of_e2))
+                        * (max_s - min_s)
+                    )
+                    x['image'] = (x['image'] - min_out) / (max_out - min_out)
+
+            else:
+                raise NotImplementedError(qc.shape[1])
+
+            if self.scale_by_magnitude:
+                scale = qc.mean(axis=1) / (x['image'].mean(axis=1) + 1e-6)
+                x['image'] *= scale.reshape(-1, 1)
+
+        return x
 
     def apply_points(self, pts: np.ndarray) -> np.ndarray:
         return pts

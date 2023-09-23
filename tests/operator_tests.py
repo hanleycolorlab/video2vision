@@ -499,7 +499,7 @@ class ToRNLTest(unittest.TestCase):
         self.assertTrue(out['dummy'], 1)
         self.assertTrue(isinstance(out['image'], np.ndarray))
         self.assertEqual(out['image'].shape, (1, 1, 2))
-        self.assertTrue(np.isclose(out['image'], 0.5).all())
+        self.assertTrue(np.isclose(out['image'], 0.4641016).all())
 
         # 4-channel test
 
@@ -521,7 +521,7 @@ class ToRNLTest(unittest.TestCase):
         self.assertTrue(out['dummy'], 1)
         self.assertTrue(isinstance(out['image'], np.ndarray))
         self.assertEqual(out['image'].shape, (1, 1, 3))
-        self.assertTrue(np.isclose(out['image'], 0.5).all())
+        self.assertTrue(np.isclose(out['image'], 0.4494897).all())
 
     def test_apply_points(self):
         '''

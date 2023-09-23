@@ -322,41 +322,6 @@ class UtilitiesTests(unittest.TestCase):
         self.assertTrue(abs(wavelengths[10] - 194.718307) < 1e-3)
         self.assertTrue(abs(response[10] - 0.) < 1e-3)
 
-    def test_to_rnl(self):
-        with self.assertRaises(NotImplementedError):
-            v2v.utils.to_rnl(
-                {'image': np.ones((1, 5), dtype=np.float32)},
-                illuminance=1.,
-                background=1.,
-                photo_sensitivity=np.ones((1, 5), dtype=np.float32),
-                photo_density=np.ones(5, dtype=np.float32),
-                weber_fraction=1.,
-            )
-
-        out = v2v.utils.to_rnl(
-            {'image': np.ones((1, 4), dtype=np.float32)},
-            illuminance=1.,
-            background=1.,
-            photo_sensitivity=np.ones((1, 4), dtype=np.float32),
-            photo_density=np.ones(4, dtype=np.float32),
-            weber_fraction=1.,
-        )
-        self.assertEqual(out.keys(), {'image'})
-        self.assertEqual(out['image'].shape, (1, 3))
-        self.assertTrue(np.isclose(out['image'], 0.5).all(), out['image'])
-
-        out = v2v.utils.to_rnl(
-            {'image': np.ones((1, 3), dtype=np.float32)},
-            illuminance=1.,
-            background=1.,
-            photo_sensitivity=np.ones((1, 3), dtype=np.float32),
-            photo_density=np.ones(3, dtype=np.float32),
-            weber_fraction=1.,
-        )
-        self.assertEqual(out.keys(), {'image'})
-        self.assertEqual(out['image'].shape, (1, 2))
-        self.assertTrue(np.isclose(out['image'], 0.5).all())
-
 
 if __name__ == '__main__':
     unittest.main()
