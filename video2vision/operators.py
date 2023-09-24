@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
+import tdigest
 
 from .utils import (
     _coerce_to_2dim,
@@ -21,9 +22,9 @@ from .utils import (
 )
 
 __all__ = [
-    'Operator', 'ConcatenateOnBands', 'HorizontalFlip', 'LinearMap',
-    'load_operator', 'OPERATOR_REGISTRY', 'Pad', 'Resize', 'ToRNL',
-    'UBGRtoXYZ', 'VerticalFlip',
+    'ConcatenateOnBands', 'HistogramStretch', 'HorizontalFlip', 'LinearMap',
+    'load_operator', 'Operator', 'OPERATOR_REGISTRY', 'Pad', 'ResetPipeline',
+    'Resize', 'ToRNL', 'UBGRtoXYZ', 'VerticalFlip',
 ]
 
 # This provides a registry of operators. This is used when saving and restoring
@@ -39,6 +40,15 @@ class HoldToken:
     :class:`AutoOperator` s that have not yet received enough input to deterine
     their coefficients. All downstream operators then return a
     :class:`HoldToken` as well.
+    '''
+
+
+class ResetPipeline(Exception):
+    '''
+    This exception should be raised by :class:`Operator` s that want to reset
+    the :class:`Pipeline` and reprocess all inputs. This is generally used by
+    :class:`AutoOperator` s that need multiple batches to determine their
+    correct coefficients.
     '''
 
 
@@ -232,6 +242,82 @@ class ConcatenateOnBands(Operator):
         Number of output bands.
         '''
         return sum(len(b) for b in self.bands)
+
+
+@OPERATOR_REGISTRY.register
+class HistogramStretch(Operator):
+    '''
+    Applies a histogram stretch to the image. A given percentile $k$ is
+    specified by the user, and the $k$th and $(1 - k)$th percentiles of the
+    brightness are calculated. Pixels above the $(1 - k)$th percentile or below
+    the $k$th percentile are squashed to 1 and 0 respectively, while pixels in
+    between are scaled so that the range of brightness lies between 0 and 1.
+    '''
+    def __init__(self, perc: float, apply_per_frame: bool = True,
+                 ceiling: Optional[float] = None,
+                 floor: Optional[float] = None):
+        '''
+        Args:
+            perc (float): The percentile to use in the stretch. This is
+            expected to be in the range [0, 100].
+            apply_per_frame (bool): If true, the histogram stretch is applied
+            individually per frame. If false, the percentiles are calculated
+            over the entire stack of images, then applied uniformly. True is
+            generally appropriate for still images, while false is generally
+            appropriate for videos.
+            ceiling (optional, float): This can be used to supply the $(1 -
+            k)$th percentile if it is already known. This is ignored if
+            apply_per_frame is true.
+            floor (optional, float): This can be used to supply the $k$th
+            percentile if it is already known. This is ignored if
+            apply_per_frame is true.
+        '''
+        self.perc = perc
+        self.apply_per_frame = apply_per_frame
+        self.ceiling = ceiling
+        self.floor = floor
+        # This is used when calculating the percentiles over an entire stack of
+        # frames, e.g. when apply_per_frame is false and we have not yet
+        # determined ceiling and floor
+        self.digest = None if apply_per_frame else tdigest.TDigest()
+
+    def apply(self, x: Dict) -> Dict:
+        # This has entirely different behavior when applied per frame or not.
+        with _coerce_to_4dim(x):
+            if self.apply_per_frame:
+                floor, ceiling = np.percentile(
+                    x['image'], [self.perc, 100 - self.perc], axis=(0, 1, 3),
+                    keepdims=True,
+                )
+            elif self.ceiling is not None:
+                floor, ceiling = self.floor, self.ceiling
+            else:
+                self.digest.batch_update(x['image'].flatten())
+                if x.get('final', False):
+                    self.floor = floor = self.digest.percentile(self.perc)
+                    self.ceiling = ceiling = self.digest.percentile(
+                        100 - self.perc
+                    )
+                    raise ResetPipeline()
+                else:
+                    return HoldToken()
+
+            x['image'] = (x['image'] - floor) / (ceiling - floor)
+            x['image'] = np.clip(x['image'], 0, 1)
+
+        return x
+
+    def apply_points(self, pts: np.ndarray) -> np.ndarray:
+        return pts
+
+    def _to_json(self) -> Dict:
+        return {
+            'class': self.__class__.__name__,
+            'perc': self.perc,
+            'apply_per_frame': self.apply_per_frame,
+            'ceiling': self.ceiling,
+            'floor': self.floor,
+        }
 
 
 @OPERATOR_REGISTRY.register

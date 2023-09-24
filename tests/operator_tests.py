@@ -3,7 +3,7 @@ Note: when writing tests, make sure that the height and width of the images are
 different, to detect height-width flip-flops.
 '''
 import json
-from math import sqrt
+from math import isclose, sqrt
 import os
 import tempfile
 import unittest
@@ -130,6 +130,74 @@ class ConcatenateOnBandsTest(unittest.TestCase):
         rest_op_out = restored_op({'image': image_1}, {'image': image_2})
 
         self.assertTrue((orig_op_out['image'] == rest_op_out['image']).all())
+
+
+class HistogramStretchTest(unittest.TestCase):
+    def test_handling(self):
+        '''
+        This tests basic coercion and handling.
+        '''
+        # The easy case: with apply_per_frame true
+        hist_op = v2v.HistogramStretch(2, apply_per_frame=True)
+        image = np.linspace(0, 1, 100).reshape(10, 10, 1)
+        image = np.stack([image, image + 3], axis=2)
+        out = hist_op({'image': image})
+        self.assertTrue(isinstance(out, dict))
+        self.assertEqual(out.keys(), {'image'})
+        self.assertEqual(out['image'].shape, (10, 10, 2, 1))
+        self.assertEqual(out['image'].min(), 0)
+        self.assertEqual(out['image'].max(), 1)
+        self.assertTrue(
+            np.isclose(out['image'][:, :, 0], out['image'][:, :, 1]).all()
+        )
+        self.assertIs(hist_op.ceiling, None)
+        self.assertIs(hist_op.floor, None)
+
+        # Now the harder case
+        hist_op = v2v.HistogramStretch(2, apply_per_frame=False)
+        batch = np.linspace(0, 1, 200)
+        image_1 = batch[:100].reshape(10, 10, 1)
+        image_2 = batch[100:].reshape(10, 10, 1)
+        out = hist_op({'image': image_1, 'final': False})
+        self.assertTrue(isinstance, v2v.operators.HoldToken)
+        with self.assertRaises(v2v.ResetPipeline):
+            hist_op({'image': image_2, 'final': True})
+        self.assertTrue(isclose(hist_op.floor, 0.01758793974295285))
+        self.assertTrue(isclose(hist_op.ceiling, 0.9824120700359344))
+        out = hist_op({'image': np.linspace(0, 1, 100).reshape(10, 10, 1)})
+        self.assertEqual(out.keys(), {'image'})
+        self.assertEqual(out['image'].shape, (10, 10, 1))
+        self.assertEqual(out['image'].min(), 0)
+        self.assertEqual(out['image'].max(), 1)
+        self.assertTrue((out['image'][0, :2, 0] == 0).all())
+        self.assertTrue((out['image'][-1, -2:, 0] == 1).all())
+
+        # Now an easy case again
+        hist_op = v2v.HistogramStretch(
+            2, apply_per_frame=False, ceiling=0.9, floor=0.1
+        )
+        image = np.linspace(0, 1, 100).reshape(10, 10, 1)
+        out = hist_op({'image': image})
+        self.assertEqual(out.keys(), {'image'})
+        self.assertEqual(out['image'].shape, (10, 10, 1))
+        self.assertTrue((out['image'][image < 0.1] == 0).all())
+        self.assertTrue((out['image'][image > 0.9] == 1).all())
+
+    def test_apply_points(self):
+        '''
+        Tests the apply_points method.
+        '''
+        hist_op = v2v.HistogramStretch(2, apply_per_frame=False)
+        # Test apply_points
+        xs, ys = np.meshgrid(np.arange(300), np.arange(200))
+        xs, ys = xs.flatten(), ys.flatten()
+        xys = np.stack((xs, ys), axis=1)
+        self.assertTrue((xys == hist_op.apply_points(xys)).all())
+
+    def test_serialization(self):
+        '''
+        Tests serialization to disk and back.
+        '''
 
 
 class LinearMapTest(unittest.TestCase):

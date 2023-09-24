@@ -262,7 +262,7 @@ class Loader(Operator):
         if _READ_WRITE_FROM_TO_BUFFER:
             if self.buff is not None:
                 out, self.buff = np.moveaxis(self.buff, 0, 2), None
-                return {'image': out}
+                return {'image': out, 'final': True}
             else:
                 raise OutOfInputs('Buffer is empty')
 
@@ -275,20 +275,25 @@ class Loader(Operator):
             (self.batch_size, *self.expected_size[::-1], self.num_channels),
             dtype=np.float32
         )
-        # self.t keeps track of the next entry in the buffer to fill.
-        self.t, names = 0, []
+        names = []
 
         try:
             for _ in range(self.batch_size):
                 _, name = next(self._data_iter)
                 names.append(name)
         except StopIteration:
-            if self.t == 0:
+            if len(names) == 0:
                 raise OutOfInputs()
 
-        self.buff = self.buff[:self.t, :, :, :]
+        n = self.t % self.batch_size
+        self.buff = self.buff[:(n if (n > 0) else self.batch_size), :, :, :]
 
-        return {'image': np.moveaxis(self.buff, 0, 2), 'names': names}
+        # final tracks whether this is the last batch to process
+        return {
+            'image': np.moveaxis(self.buff, 0, 2),
+            'names': names,
+            'final': (self.t >= len(self)),
+        }
 
     def get_frame(self, t: int) -> np.ndarray:
         '''

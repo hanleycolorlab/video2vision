@@ -8,9 +8,9 @@ import networkx as nx
 import numpy as np
 
 from .io import Loader, OutOfInputs, _read_write_from_to_buffer, Writer
-from .operators import Operator, OPERATOR_REGISTRY
+from .operators import Operator, OPERATOR_REGISTRY, ResetPipeline
 
-__all__ = ['load_pipeline', 'Pipeline', 'ResetPipeline']
+__all__ = ['load_pipeline', 'Pipeline']
 
 
 class Pipeline(nx.DiGraph):
@@ -347,12 +347,3 @@ class Pipeline(nx.DiGraph):
 
 
 load_pipeline = Pipeline.load
-
-
-class ResetPipeline(Exception):
-    '''
-    This exception should be raised by :class:`Operator` s that want to reset
-    the :class:`Pipeline` and reprocess all inputs. This is generally used by
-    :class:`AutoOperator` s that need multiple batches to determine their
-    correct coefficients.
-    '''
