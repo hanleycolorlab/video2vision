@@ -208,6 +208,8 @@ class ConcatenateOnBands(Operator):
             for k, v in x.items():
                 if k not in rtn:
                     rtn[k] = v
+                elif k == 'final':
+                    rtn[k] = rtn[k] or v
                 elif rtn[k] != v:
                     raise ValueError(
                         f'Conflicting values for key {k} in concatenated '
