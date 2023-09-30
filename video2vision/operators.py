@@ -610,7 +610,7 @@ class ToRNL(Operator):
                 out_z = (
                     A * (s[:, 0] - (a * s[:, 3] + b * s[:, 2] + c * s[:, 1]))
                 )
-                x['image'] = np.stack((out_x, out_y, out_z), axis=1)
+                x['image'] = np.stack((out_z, out_y, out_x), axis=1)
 
                 if self.normalize_outputs:
                     min_s = np.log((0.5 / 256) / background.flatten()).min()
@@ -637,7 +637,7 @@ class ToRNL(Operator):
                     (s[:, 0] - (s[:, 2] * e[1]**2 / sum_of_e1)
                      - (s[:, 1] * e[2]**2 / sum_of_e1))
                 )
-                x['image'] = np.stack((out_x, out_y), axis=1)
+                x['image'] = np.stack((out_y, out_x), axis=1)
 
                 if self.normalize_outputs:
                     min_s = np.log((0.5 / 256) / background.flatten()).min()
