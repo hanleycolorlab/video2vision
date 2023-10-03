@@ -503,9 +503,17 @@ def read_jazirrad_file(path: str) -> Tuple[np.ndarray, np.ndarray]:
 
     # These lines delineate the tab-separated values data containing the
     # irradiances. There's also a header we skip.
-    start_idx = contents.index('>>>>>Begin Processed Spectral Data<<<<<\n') + 2
-    end_idx = contents.index('>>>>>End Processed Spectral Data<<<<<\n')
-    contents = contents[start_idx:end_idx]
+    try:
+        start_idx = contents.index(
+            '>>>>>Begin Processed Spectral Data<<<<<\n'
+        )
+    except ValueError:
+        start_idx = contents.index('>>>>>Begin Spectral Data<<<<<\n')
+    try:
+        end_idx = contents.index('>>>>>End Processed Spectral Data<<<<<\n')
+    except ValueError:
+        end_idx = contents.index('>>>>>End Spectral Data<<<<<\n')
+    contents = contents[start_idx + 2:end_idx]
     # contents is now a tab-separated with four columns. The 0th is wavelength
     # and the second is the spectral response in uW / cm^2 nm.
     contents = list(csv.reader(contents, dialect='excel-tab'))
