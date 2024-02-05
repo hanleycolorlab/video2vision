@@ -219,6 +219,7 @@ class SelectorBox(widgets.VBox):
             scale_crosshair=True,
             include_numbers=True,
             font_color=font_color,
+            border_margin=max(w // 2, 1),
         )
         super().__init__((self.selector, self.buttons))
         self._autofind_crosshairs()

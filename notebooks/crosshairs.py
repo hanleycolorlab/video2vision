@@ -207,7 +207,7 @@ class ImageWithCrosshairs(widgets.Image):
         h, w, *_ = self.image.shape
         rs = (self.original_size[0] / w, self.original_size[1] / h)
 
-        # If self.crosshairs is empty, the argmax will error out.
+        # If self.crosshairs is empty, the argmin will error out.
         if self.crosshairs:
             # We want to do the comparison in the displayed coordinate space,
             # not the original coordinate system.
@@ -307,6 +307,22 @@ class SampleSelector(ImageWithCrosshairs):
     allow selecting points on the image. To create a crosshair on the image,
     click on it. To remove that crosshair, click on it again.
     '''
+    def __init__(self, image: np.ndarray,
+                 output_size: Optional[Tuple[int, int]] = None,
+                 encoding: str = 'PNG',
+                 crosshair_image: Optional[List[np.ndarray]] = None,
+                 scale_crosshair: bool = False,
+                 include_numbers: bool = False,
+                 font: ImageFont.FreeTypeFont = FONT,
+                 font_color: np.ndarray = FONT_COLOR,
+                 border_margin: int = 0):
+        super().__init__(
+            image=image, output_size=output_size, encoding=encoding,
+            crosshair_image=crosshair_image, scale_crosshair=scale_crosshair,
+            include_numbers=include_numbers, font=font, font_color=font_color
+        )
+        self.border_margin = border_margin
+
     def get_points(self) -> np.ndarray:
         '''
         Returns the coordinates of the crosshairs.
@@ -326,6 +342,14 @@ class SampleSelector(ImageWithCrosshairs):
             y (int): y coordinate of the click, in the original image
             coordinates.
         '''
+        # Check if we're too close to the margin
+        w, h = self.original_size
+        if (
+            (min(x, w - x) < self.border_margin) or
+            (min(y, h - y) < self.border_margin)
+        ):
+            return
+
         # Get the next index to be assigned by looking for the lowest index
         # that has not yet been used.
         if self.idxs:
