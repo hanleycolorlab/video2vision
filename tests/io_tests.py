@@ -480,6 +480,12 @@ class IOTest(unittest.TestCase):
         self.assertTrue((out == 1 / 256.).all())
         self.assertTrue((buff == 1 / 256.).all())
 
+    def test_error_handling(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            loader = v2v.Loader(temp_root, (256, 256), batch_size=1)
+            with self.assertRaises(FileNotFoundError):
+                loader()
+
 
 if __name__ == '__main__':
     unittest.main()

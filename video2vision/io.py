@@ -266,6 +266,9 @@ class Loader(Operator):
             else:
                 raise OutOfInputs('Buffer is empty')
 
+        if len(self) == 0:
+            raise FileNotFoundError('Loader found no files - check path')
+
         # We arrange the buffer in order THWC instead of the usual order HWTC,
         # because this reduces the time required to copy frames in by a factor
         # of x6. We then move the axis prior to returning to convert it to
