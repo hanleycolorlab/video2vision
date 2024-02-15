@@ -203,6 +203,18 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(out.dtype, should_be.dtype)
         self.assertTrue((np.abs(out - should_be) < 0.03).all())
 
+    def test_set_batch_size(self):
+        with tempfile.TemporaryDirectory() as temp_path:
+            pipe = self._make_pipeline(temp_path, batch_size=8)
+            pipe.set_batch_size(8)
+            pipe.set_batch_size(16)
+
+            # Add temporal align operator
+            pipe.add_operator(v2v.AutoTemporalAlign([-10, 10]))
+            with self.assertRaises(ValueError):
+                pipe.set_batch_size(8)
+            pipe.set_batch_size(16)
+
     def test_serialization(self):
         '''
         Tests pipeline serialization.

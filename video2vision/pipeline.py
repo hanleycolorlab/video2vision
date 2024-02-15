@@ -138,6 +138,14 @@ class Pipeline(nx.DiGraph):
                 if isinstance(self.nodes[i]['operator'], Loader)]
         return [self.nodes[i]['operator'] for i in sorted(idxs)]
 
+    def get_operators(self) -> List[Operator]:
+        '''
+        Returns a list of the :class:`Operator` s in the :class:`Pipeline`,
+        ordered by index.
+        '''
+        idxs = [i for i in self.nodes]
+        return [self.nodes[i]['operator'] for i in sorted(idxs)]
+
     def get_writers(self) -> List[Writer]:
         '''
         Returns a list of the :class:`Writer` s in the :class:`Pipeline`,
@@ -314,8 +322,8 @@ class Pipeline(nx.DiGraph):
         Args:
             batch_size (int): Number of frames to load per iteration.
         '''
-        for loader in self.get_loaders():
-            loader.batch_size = batch_size
+        for op in self.get_operators():
+            op.set_batch_size(batch_size)
 
     def set_loader_paths(self, *paths):
         '''

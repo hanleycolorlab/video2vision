@@ -666,6 +666,14 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         self.skipped_batch = False
         return super().reset()
 
+    def set_batch_size(self, batch_size: int):
+        min_batch_size = max(abs(t) for t in self.time_shift_range)
+        if batch_size <= min_batch_size:
+            raise ValueError(
+                f'Batch size ({batch_size}) too small for time shift range '
+                f'({self.time_shift_range}); needs at least {min_batch_size}'
+            )
+
     def _shift(self, source: Dict, control: Dict, shift: int = 0,
                no_buffer: bool = False):
         '''

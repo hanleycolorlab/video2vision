@@ -160,6 +160,15 @@ class Operator:
         '''
         return
 
+    def set_batch_size(self, batch_size: int):
+        '''
+        This method is used to notify an :class:`Operator` what the expected
+        number of frames per batch will be. It is not guaranteed that the
+        :class:`Operator` will receive that exact number of frames, merely that
+        that is the expected number.
+        '''
+        return
+
 
 @OPERATOR_REGISTRY.register
 class ConcatenateOnBands(Operator):

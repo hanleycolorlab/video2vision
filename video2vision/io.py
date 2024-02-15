@@ -335,6 +335,12 @@ class Loader(Operator):
             if reader is not None:
                 reader.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
+    def set_batch_size(self, batch_size: int):
+        '''
+        Sets the batch size of frames drawn per iteration.
+        '''
+        self.batch_size = batch_size
+
     def set_path(self, paths: Optional[Union[str, Iterator[str]]]):
         '''
         Sets the input path.
