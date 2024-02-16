@@ -105,7 +105,10 @@ def load(path: str, out: Optional[np.ndarray] = None) -> np.ndarray:
         image = image[:, :, ::-1]
 
     else:
+        # This will return None if it can't read the path
         image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        if image is None:
+            raise RuntimeError(f'Image {path} could not be read')
         # Rescale to [0, 1] and float32
         image = _convert_and_scale_uint8(image, out=out)
 

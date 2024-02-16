@@ -89,6 +89,15 @@ class IOTest(unittest.TestCase):
                     self.assertTrue(_is_close(rtn, image))
                     self.assertTrue(_is_close(rtn, out))
 
+    def test_load_error_handling(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            path = os.path.join(temp_root, 'test.png')
+            with open(path, 'w') as out_file:
+                out_file.write('Dummy')
+
+            with self.assertRaises(RuntimeError):
+                v2v.load(path)
+
     def test_loader_handling(self):
         '''
         Tests basic handling of the :class:`Loader`.
