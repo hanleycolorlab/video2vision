@@ -587,6 +587,24 @@ class AutoTemporalAlignTest(unittest.TestCase):
 
         align_op.release()
 
+    def test_minimum_batch_size(self):
+        align_op = v2v.AutoTemporalAlign((0, 4), bands=[[0, 1, 2], []])
+
+        image = self._build_image()
+        data_dict = {'image': np.stack((image, -image), axis=2)}
+
+        out = align_op(data_dict, data_dict)
+        self.assertTrue(isinstance(out, v2v.operators.HoldToken))
+
+        with self.assertRaises(RuntimeError) as err:
+            align_op.release()
+
+        self.assertTrue(
+            str(err.exception).startswith(
+                'Pipeline ended without seeing enough frames'
+            )
+        )
+
     def test_motion_detection(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 

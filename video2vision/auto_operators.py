@@ -535,6 +535,12 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         # whether the operator needs to raise a ResetPipeline exception when it
         # finds the correct alignment.
         self.skipped_batch = False
+        # This is used to track whether any batch has contained enough frames
+        # to POTENTIALLY be used for alignment, even if it couldn't be because
+        # it didn't have enough motion. This is used to raise a more explicit
+        # error if the batch size is set too small, rather than just saying we
+        # couldn't find an alignment.
+        self.seen_enough_frames = False
 
     def apply(self, source: Dict, control: Dict) -> Union[Dict, HoldToken]:
         if self.coe is not None:
@@ -566,6 +572,8 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         with _coerce_to_4dim(source), _coerce_to_4dim(control):
             nf = min(source['image'].shape[2], control['image'].shape[2])
         source_motion, control_motion = source_motion[:nf], control_motion[:nf]
+        min_batch_size = max(abs(t) for t in self.time_shift_range)
+        self.seen_enough_frames |= (nf >= min_batch_size)
 
         # We need to ensure that, under all possible time shifts, at least some
         # frames with motion will be available to compare. If they do not, we
@@ -652,6 +660,13 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         return self.apply(source, control)
 
     def release(self):
+        if not self.seen_enough_frames:
+            min_batch_size = max(abs(t) for t in self.time_shift_range)
+            raise RuntimeError(
+                f'Pipeline ended without seeing enough frames to find a '
+                f'temporal alignment. Check that batch_size of the loaders is '
+                f'greater than {min_batch_size}.'
+            )
         if self.coe is None:
             raise RuntimeError(
                 'Pipeline ended before AutoTemporalAlign found a viable '
