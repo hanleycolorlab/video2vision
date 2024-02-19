@@ -660,18 +660,19 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         return self.apply(source, control)
 
     def release(self):
-        if not self.seen_enough_frames:
-            min_batch_size = max(abs(t) for t in self.time_shift_range)
-            raise RuntimeError(
-                f'Pipeline ended without seeing enough frames to find a '
-                f'temporal alignment. Check that batch_size of the loaders is '
-                f'greater than {min_batch_size}.'
-            )
         if self.coe is None:
-            raise RuntimeError(
-                'Pipeline ended before AutoTemporalAlign found a viable '
-                'alignment.'
-            )
+            if not self.seen_enough_frames:
+                min_batch_size = max(abs(t) for t in self.time_shift_range)
+                raise RuntimeError(
+                    f'Pipeline ended without seeing enough frames to find a '
+                    f'temporal alignment. Check that batch_size of the loaders'
+                    f' is greater than {min_batch_size}.'
+                )
+            else:
+                raise RuntimeError(
+                    'Pipeline ended before AutoTemporalAlign found a viable '
+                    'alignment.'
+                )
 
     def reset(self):
         self.buff = None
@@ -682,12 +683,14 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         return super().reset()
 
     def set_batch_size(self, batch_size: int):
-        min_batch_size = max(abs(t) for t in self.time_shift_range)
-        if batch_size <= min_batch_size:
-            raise ValueError(
-                f'Batch size ({batch_size}) too small for time shift range '
-                f'({self.time_shift_range}); needs at least {min_batch_size}'
-            )
+        if self.coe is None:
+            min_batch_size = max(abs(t) for t in self.time_shift_range)
+            if batch_size <= min_batch_size:
+                raise ValueError(
+                    f'Batch size ({batch_size}) too small for time shift range'
+                    f'({self.time_shift_range}); needs at least '
+                    f'{min_batch_size}'
+                )
 
     def _shift(self, source: Dict, control: Dict, shift: int = 0,
                no_buffer: bool = False):
