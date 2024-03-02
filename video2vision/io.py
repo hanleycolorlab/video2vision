@@ -270,7 +270,7 @@ class Loader(Operator):
                 raise OutOfInputs('Buffer is empty')
 
         if len(self) == 0:
-            raise FileNotFoundError('Loader found no files - check path')
+            raise FileNotFoundError(self.paths)
 
         # We arrange the buffer in order THWC instead of the usual order HWTC,
         # because this reduces the time required to copy frames in by a factor
