@@ -1,6 +1,8 @@
 '''
 Provides notebook widgets for entering selections.
 '''
+from typing import Callable, Optional
+
 import ipywidgets as widgets
 
 from .config import (
@@ -13,136 +15,74 @@ from .config import (
 from .popup import CONFIG_PROMPTS, show_config_window
 
 __all__ = [
-    'BoolBox', 'ConfigBox', 'IntBox', 'PathBox', 'StringBox',
-    'SaveDefaultsButton', 'ShowConfigButton'
+    'BoolBox', 'ConfigBox', 'IntBox', 'PathBox', 'SimpleButton', 'StringBox',
 ]
 
 
-LABEL_WIDTH = '120px'
-TEXT_WIDTH = '300px'
+TEXT_WIDTH = '420px'
 BUTTON_WIDTH = '80px'
+LABEL_HEIGHT = '20px'
 WIDGET_HEIGHT = '30px'
 
 
-class BoolBox(widgets.HBox):
-    def __init__(self, key: str):
-        self.key = key
-
+class LabeledBox(widgets.VBox):
+    def __init__(self, key: str, favorite: widgets.Widget,
+                 button: Optional[widgets.Widget] = None):
         config = get_config()
         if config._nb_labels[key] is not None:
             raise RuntimeError(
                 f'Multiple notebook labels registered for {key}'
             )
 
-        label = widgets.Label(
-            PARAM_CAPTIONS[key],
-            layout=widgets.Layout(width=LABEL_WIDTH, height=WIDGET_HEIGHT),
-        )
+        label = widgets.Label(PARAM_CAPTIONS[key])
+        if button is None:
+            button = widgets.Label(
+                '',
+                layout=widgets.Layout(width=BUTTON_WIDTH,
+                                      height=WIDGET_HEIGHT),
+            )
+        hbox = widgets.HBox((favorite, button))
+        super().__init__((label, hbox))
+
+        self.key = key
+        config._nb_labels[key] = self.favorite
+        self.favorite.continuous_update = False
+        self.favorite.observe(self.callback, 'value')
+
+    def callback(self, checkbox):
+        config = get_config()
+        config[self.key] = self.favorite.value
+
+    @property
+    def favorite(self) -> widgets.Widget:
+        return self.children[1].children[0]
+
+
+class BoolBox(LabeledBox):
+    def __init__(self, key: str):
+        config = get_config()
         checkbox = widgets.Checkbox(
             value=config._values[key] or False,
             disabled=False,
             layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
         )
-        # Used to keep alignment consistent with PathBox
-        whitespace = widgets.Label(
-            '',
-            layout=widgets.Layout(width=BUTTON_WIDTH, height=WIDGET_HEIGHT),
-        )
-        super().__init__((label, checkbox, whitespace))
-
-        config._nb_labels[key] = checkbox
-        checkbox.continuous_update = False
-        checkbox.observe(self.callback, 'value')
-
-    def callback(self, checkbox):
-        config = get_config()
-        config[self.key] = self.children[1].value
+        super().__init__(key, checkbox)
 
 
-class IntBox(widgets.HBox):
+class IntBox(LabeledBox):
     def __init__(self, key: str):
-        self.key = key
-
         config = get_config()
-        if config._nb_labels[key] is not None:
-            raise RuntimeError(
-                f'Multiple notebook labels registered for {key}'
-            )
-
-        label = widgets.Label(
-            PARAM_CAPTIONS[key],
-            layout=widgets.Layout(width=LABEL_WIDTH, height=WIDGET_HEIGHT),
-        )
         textbox = widgets.IntText(
             value=config._values[key],
             disabled=False,
             layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
         )
-        # Used to keep alignment consistent with PathBox
-        whitespace = widgets.Label(
-            '',
-            layout=widgets.Layout(width=BUTTON_WIDTH, height=WIDGET_HEIGHT),
-        )
-        super().__init__((label, textbox, whitespace))
-
-        config._nb_labels[key] = textbox
-        textbox.continuous_update = False
-        textbox.observe(self.callback, 'value')
-
-    def callback(self, textbox):
-        config = get_config()
-        config[self.key] = self.children[1].value
+        super().__init__(key, textbox)
 
 
-class StringBox(widgets.HBox):
-    def __init__(self, key: str):
-        self.key = key
-
-        config = get_config()
-        if config._nb_labels[key] is not None:
-            raise RuntimeError(
-                f'Multiple notebook labels registered for {key}'
-            )
-
-        label = widgets.Label(
-            PARAM_CAPTIONS[key],
-            layout=widgets.Layout(width=LABEL_WIDTH, height=WIDGET_HEIGHT),
-        )
-        textbox = widgets.Text(
-            value=(config._values[key] or ''),
-            disabled=False,
-            layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
-        )
-        # Used to keep alignment consistent with PathBox
-        whitespace = widgets.Label(
-            '',
-            layout=widgets.Layout(width=BUTTON_WIDTH, height=WIDGET_HEIGHT),
-        )
-        super().__init__((label, textbox, whitespace))
-
-        config._nb_labels[key] = textbox
-        textbox.continuous_update = False
-        textbox.observe(self.callback, 'value')
-
-    def callback(self, textbox):
-        config = get_config()
-        config[self.key] = self.children[1].value
-
-
-class PathBox(widgets.HBox):
+class PathBox(LabeledBox):
     def __init__(self, key: str, kind: str = 'openfile'):
-        self.key = key
-
         config = get_config()
-        if config._nb_labels[key] is not None:
-            raise RuntimeError(
-                f'Multiple notebook labels registered for {key}'
-            )
-
-        label = widgets.Label(
-            PARAM_CAPTIONS[key],
-            layout=widgets.Layout(width=LABEL_WIDTH, height=WIDGET_HEIGHT),
-        )
         textbox = widgets.Text(
             value=(config._values[key] or ''),
             disabled=False,
@@ -153,22 +93,26 @@ class PathBox(widgets.HBox):
             disabled=False,
             layout=widgets.Layout(width=BUTTON_WIDTH, height=WIDGET_HEIGHT),
         )
-        super().__init__((label, textbox, button))
+        super().__init__(key, textbox, button)
 
-        config._nb_labels[key] = textbox
-        textbox.continuous_update = False
-        textbox.observe(self.callback, 'value')
         button.on_click(self.dialog_box)
-
-    def callback(self, textbox):
-        config = get_config()
-        config[self.key] = self.children[1].value
 
     def dialog_box(self, button):
         out = CONFIG_PROMPTS[self.key]()
 
         if out:
-            self.children[1].value = out
+            self.favorite.value = out
+
+
+class StringBox(LabeledBox):
+    def __init__(self, key: str):
+        config = get_config()
+        textbox = widgets.Text(
+            value=(config._values[key] or ''),
+            disabled=False,
+            layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
+        )
+        super().__init__(key, textbox)
 
 
 BOX_TYPES = {
@@ -181,34 +125,19 @@ class ConfigBox(widgets.VBox):
         contents = [BOX_TYPES[PARAM_TYPES[k]](k) for k in keys]
         if show_buttons:
             buttons = (
-                ShowConfigButton(), SaveDefaultsButton(), ClearAllButton()
+                SimpleButton('Show Config', show_config_window),
+                SimpleButton('Save Defaults', save_defaults),
+                SimpleButton('Clear All', clear_all),
             )
             contents += [widgets.HBox(buttons)]
         super().__init__(contents)
 
 
-class ClearAllButton(widgets.Button):
-    def __init__(self):
-        super().__init__(description='Clear All')
+class SimpleButton(widgets.Button):
+    def __init__(self, description: str, action: Callable):
+        super().__init__(description=description)
+        self.action = action
         self.on_click(self._click)
 
     def _click(self, b):
-        clear_all()
-
-
-class SaveDefaultsButton(widgets.Button):
-    def __init__(self):
-        super().__init__(description='Save Defaults')
-        self.on_click(self._click)
-
-    def _click(self, b):
-        save_defaults()
-
-
-class ShowConfigButton(widgets.Button):
-    def __init__(self):
-        super().__init__(description='Show Config')
-        self.on_click(self._click)
-
-    def _click(self, b):
-        show_config_window()
+        self.action()
