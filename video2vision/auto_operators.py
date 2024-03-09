@@ -29,7 +29,10 @@ from .utils import (
 )
 from .warp import Warp
 
-__all__ = ['AutoAlign', 'AutoLinearize', 'AutoOperator', 'AutoTemporalAlign']
+__all__ = [
+    'AlignmentNotFound', 'AutoAlign', 'AutoLinearize', 'AutoOperator',
+    'AutoTemporalAlign'
+]
 
 
 class AutoOperator(Operator):
@@ -132,7 +135,7 @@ class AutoAlign(Warp, AutoOperator):
         if self.method == 'any':
             try:
                 return self._find_alignment_by_aruco(source, control)
-            except RuntimeError:
+            except AlignmentNotFound:
                 return self._find_alignment_by_ecc(source, control)
         elif self.method == 'aruco':
             return self._find_alignment_by_aruco(source, control)
@@ -149,13 +152,18 @@ class AutoAlign(Warp, AutoOperator):
             self.output_size = control['image'].shape[:2][::-1]
 
         # These will raise RuntimeErrors if no markers are found.
-        source_ts, source_pts, source_ids = locate_aruco_markers(source)
-        control_ts, control_pts, control_ids = locate_aruco_markers(control)
+        try:
+            source_ts, source_pts, source_ids = locate_aruco_markers(source)
+            control_ts, control_pts, control_ids = locate_aruco_markers(
+                control
+            )
+        except RuntimeError:
+            raise AlignmentNotFound('Could not locate ARUCO markers')
 
         # Screen for frames with markers present in both
         joint_ts = sorted(set(source_ts) & set(control_ts))
         if not joint_ts:
-            raise RuntimeError('No markers found in common frames')
+            raise AlignmentNotFound('No markers found in common frames')
 
         size = control['image'].shape[:2][::-1]
         # n tracks how many examples we've compared, so we don't exceed the
@@ -198,7 +206,9 @@ class AutoAlign(Warp, AutoOperator):
                 break
 
         if best_ecc == -float('inf'):
-            raise RuntimeError('AutoAlign failed to find viable alignment')
+            raise AlignmentNotFound(
+                'AutoAlign failed to find viable alignment'
+            )
 
         self.coe = best_coe
 
@@ -295,7 +305,9 @@ class AutoAlign(Warp, AutoOperator):
                 best_ecc, best_coe, best_warped = ecc, self.coe, warped_image
 
         if best_ecc == -float('inf'):
-            raise RuntimeError('AutoAlign failed to find viable alignment')
+            raise AlignmentNotFound(
+                'AutoAlign failed to find viable alignment'
+            )
 
         self.coe = best_coe
 
@@ -303,7 +315,7 @@ class AutoAlign(Warp, AutoOperator):
 
     def release(self):
         if self.coe is None:
-            raise RuntimeError(
+            raise AlignmentNotFound(
                 'Pipeline ended before AutoAlign found a viable alignment.'
             )
 
@@ -638,12 +650,13 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
                 source, control, time_shift, no_buffer=True,
             )
 
-            # This can raise a RuntimeError if we fail to find an alignment.
+            # This can raise an AlignmentNotFound error if we fail to find an
+            # alignment.
             try:
                 warped_source = super()._find_alignment(
                     shifted_source, shifted_control
                 )
-            except RuntimeError:
+            except AlignmentNotFound:
                 continue
 
             ecc = _evaluate_ecc_for_warp(shifted_control, warped_source)
@@ -651,7 +664,7 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
                 best_ecc, best_shift, best_coe = ecc, time_shift, self.coe
 
         if best_ecc == -float('inf'):
-            raise RuntimeError(
+            raise AlignmentNotFound(
                 'AutoTemporalAlign failed to find viable alignment'
             )
 
@@ -663,13 +676,13 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         if self.coe is None:
             if not self.seen_enough_frames:
                 min_batch_size = max(abs(t) for t in self.time_shift_range)
-                raise RuntimeError(
+                raise AlignmentNotFound(
                     f'Pipeline ended without seeing enough frames to find a '
                     f'temporal alignment. Check that batch_size of the loaders'
                     f' is greater than {min_batch_size}.'
                 )
             else:
-                raise RuntimeError(
+                raise AlignmentNotFound(
                     'Pipeline ended before AutoTemporalAlign found a viable '
                     'alignment.'
                 )
@@ -753,3 +766,10 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             'time_shift': self.time_shift,
         })
         return rtn
+
+
+class AlignmentNotFound(Exception):
+    '''
+    Represents an error where an automatic operator was expected to align two
+    sets of frames, but was unable to.
+    '''

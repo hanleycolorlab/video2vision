@@ -20,7 +20,7 @@ class AutoAlignTest(unittest.TestCase):
     def test_handling_with_aruco(self):
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(v2v.AlignmentNotFound):
             align_op.release()
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
@@ -74,8 +74,8 @@ class AutoAlignTest(unittest.TestCase):
 
         align_op.release()
 
-        # Test that it raises a RuntimeError if pointed to an image with no
-        # ARUCO markers in it.
+        # Test that it raises an AlignmentNotFoud if pointed to an image with
+        # no ARUCO markers in it.
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []], method='aruco')
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
@@ -86,13 +86,13 @@ class AutoAlignTest(unittest.TestCase):
         image = cv2.resize(image, (image.shape[1] // 2, image.shape[0] // 2))
         coe = cv2.getRotationMatrix2D(angle=1.2, center=(w, h), scale=1)
         warped_image = cv2.warpAffine(image, coe, (w, h))
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(v2v.AlignmentNotFound):
             align_op(warped_image, data_dict)
 
     def test_handling_with_ecc(self):
         align_op = v2v.AutoAlign(bands=[[0, 1, 2], []])
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(v2v.AlignmentNotFound):
             align_op.release()
 
         data_root = os.path.join(os.path.dirname(__file__), 'data')
@@ -487,7 +487,7 @@ class AutoTemporalAlignTest(unittest.TestCase):
     def test_handling(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(v2v.AlignmentNotFound):
             align_op.release()
 
         image = self._build_image()
@@ -599,7 +599,7 @@ class AutoTemporalAlignTest(unittest.TestCase):
         out = align_op(data_dict, data_dict)
         self.assertTrue(isinstance(out, v2v.operators.HoldToken))
 
-        with self.assertRaises(RuntimeError) as err:
+        with self.assertRaises(v2v.AlignmentNotFound) as err:
             align_op.release()
 
         self.assertTrue(
