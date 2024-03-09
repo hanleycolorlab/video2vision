@@ -110,7 +110,7 @@ def _coerce_to_dict(x: Any) -> Dict:
     return x
 
 
-def _coerce_to_image(image: Any) -> np.ndarray:
+def _coerce_to_image(image: Any, noscale: bool = False) -> np.ndarray:
     '''
     Convenience function to coerce an arbitrary objects to a
     :class:`numpy.ndarray` that is either 3- or 4-dimensional.
@@ -124,7 +124,7 @@ def _coerce_to_image(image: Any) -> np.ndarray:
         raise ValueError(
             f'Image must be 3- or 4-dimensional, not {image.shape}'
         )
-    if (image.dtype != np.float32):
+    if (not noscale) and (image.dtype != np.float32):
         image = image.astype(np.float32)
     return image
 

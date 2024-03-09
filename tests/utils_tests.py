@@ -99,6 +99,12 @@ class CoercionTests(unittest.TestCase):
         x = v2v.utils._coerce_to_image(x)
         self.assertEqual(x.dtype, np.float32)
 
+        # Check noscale
+        x = np.arange(20, dtype=np.uint8).reshape(4, 5)
+        x = v2v.utils._coerce_to_image(x, noscale=True)
+        self.assertEqual(x.shape, (4, 5, 1))
+        self.assertEqual(x.dtype, np.uint8)
+
     def test_coerce_to_mask(self):
         # Check coercion of 2-dimensional masks
         x = np.ones((4, 5), dtype=np.uint8)

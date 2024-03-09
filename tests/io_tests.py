@@ -11,9 +11,7 @@ def _is_close(x: np.ndarray, y: np.ndarray) -> bool:
     '''
     Convenience function used to compare two values under lossy compression.
     '''
-    # Need to cast to int64 before comparing to avoid overflowing to 256 when
-    # we subtract
-    x, y = x.astype(int), y.astype(int)
+    x, y = x.astype(np.float32), y.astype(np.float32)
     return (np.abs(x - y).mean() < 3)
 
 
@@ -39,6 +37,10 @@ class IOTest(unittest.TestCase):
         image = v2v.load(path, out=out)
         self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
         self.assertTrue((np.abs(out[:8, 0, 2] - should_be) < 1e-7).all())
+
+        image = v2v.load(path, noscale=True)
+        should_be = np.array([456, 456, 474, 492, 493, 494, 494, 494])
+        self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
 
     def test_load_and_save(self):
         '''
@@ -88,6 +90,18 @@ class IOTest(unittest.TestCase):
                     self.assertEqual(rtn.shape, shape, (ext, shape))
                     self.assertTrue(_is_close(rtn, image))
                     self.assertTrue(_is_close(rtn, out))
+
+    def test_load_noscale(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_path = os.path.join(temp_root, 'test.png')
+            image = np.zeros((8, 8, 3), dtype=np.float32)
+            image[4:, :4], image[:4, 4:], image[4:, 4:] = 0.2, 0.5, 0.7
+            v2v.save(image, temp_path)
+
+            rtn = v2v.load(temp_path, noscale=True)
+            self.assertEqual(rtn.dtype, np.uint8)
+            self.assertEqual(rtn.shape, (8, 8, 3))
+            self.assertTrue(_is_close(rtn, (256 * image)))
 
     def test_load_error_handling(self):
         with tempfile.TemporaryDirectory() as temp_root:
@@ -413,6 +427,10 @@ class IOTest(unittest.TestCase):
             for t in range(5):
                 frame = loader.get_frame(t)
                 self.assertTrue(_is_close(frame, video[:, :, t % 3]), t)
+                frame = loader.get_frame(t, noscale=True)
+                self.assertTrue(
+                    _is_close(frame, (256 * video[:, :, t % 3]))
+                )
 
             with self.assertRaises(ValueError):
                 loader.get_frame(5)
