@@ -29,10 +29,11 @@ class LabeledBox(widgets.VBox):
     def __init__(self, key: str, favorite: widgets.Widget,
                  button: Optional[widgets.Widget] = None):
         config = get_config()
+
         if config._nb_labels[key] is not None:
-            raise RuntimeError(
-                f'Multiple notebook labels registered for {key}'
-            )
+            favorite = config._nb_labels[key]
+        else:
+            config._nb_labels[key] = favorite
 
         label = widgets.Label(PARAM_CAPTIONS[key])
         if button is None:
@@ -45,17 +46,24 @@ class LabeledBox(widgets.VBox):
         super().__init__((label, hbox))
 
         self.key = key
-        config._nb_labels[key] = self.favorite
         self.favorite.continuous_update = False
         self.favorite.observe(self.callback, 'value')
 
     def callback(self, checkbox):
         config = get_config()
-        config[self.key] = self.favorite.value
+        config[self.key] = self.value
 
     @property
     def favorite(self) -> widgets.Widget:
         return self.children[1].children[0]
+
+    @property
+    def value(self):
+        return self.favorite.value
+
+    @value.setter
+    def value(self, v):
+        self.favorite.value = v
 
 
 class BoolBox(LabeledBox):

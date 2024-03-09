@@ -417,6 +417,11 @@ class IOTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 loader.get_frame(5)
 
+        with tempfile.TemporaryDirectory() as temp_root:
+            loader = v2v.Loader(temp_root, (256, 256), batch_size=2)
+            with self.assertRaises(FileNotFoundError):
+                loader.get_frame(0)
+
     def test_writer_path_inference(self):
         image = {
             'image': np.ones((32, 32, 2, 3), dtype=np.float32),

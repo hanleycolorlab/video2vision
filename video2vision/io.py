@@ -314,7 +314,10 @@ class Loader(Operator):
             if n_frames > t:
                 break
         else:
-            raise ValueError(f'{t} out of range: {len(self)}')
+            if n_frames == 0:
+                raise FileNotFoundError(self.paths)
+            else:
+                raise ValueError(f'{t} out of range: {len(self)}')
 
         if reader is None:
             # load handles rescaling for us

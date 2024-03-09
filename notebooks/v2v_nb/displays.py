@@ -14,9 +14,7 @@ import video2vision as v2v
 
 from .utils import gamma_scale, resize
 
-__all__ = [
-    'DisplayBox', 'ForwardBackwardButtons', 'GhostBox', 'SelectorBox',
-]
+__all__ = ['DisplayBox', 'GhostBox', 'SelectorBox']
 
 ASSOCIATION_RADIUS_SQ = 32**2
 
@@ -36,8 +34,6 @@ else:
 
 
 FONT_COLOR = (0, 255, 0)
-
-# TODO: Combine DisplayBox, SelectorBox
 
 
 class DisplayBox(widgets.VBox):
@@ -110,11 +106,12 @@ class DisplayBox(widgets.VBox):
         x = 0
         for image in images:
             # Convert from BGR, float32, [0, 1] to RGB, uint8, [0, 255]
-            if (image.ndim == 3) and (image.shape[2] == 3):
+            if image.shape[2] == 3:
                 image = image[:, :, ::-1]
+            elif image.shape[2] == 1:
+                image = image[:, :, 0]
             image = np.clip(256 * image, 0, 255).astype(np.uint8)
-            # Resize
-            if image.size != (im_w, im_h):
+            if image.shape[:2] != (im_h, im_w):
                 image = resize(image, (im_w, im_h))
             self.display.paste(Image.fromarray(image), (x, 0))
             x += image.shape[1]
@@ -370,7 +367,8 @@ class SelectorBox(DisplayBox):
 
         self.idxs = crosshairs['idxs']
         self.crosshair_type = crosshairs['crosshair_type']
-        self.crosshairs = crosshairs['crosshairs']
+        # JSON turns the pairs into lists
+        self.crosshairs = [tuple(x) for x in crosshairs['crosshairs']]
 
         if not norefresh:
             if crosshairs['t'] != self.t:
@@ -434,8 +432,8 @@ class SelectorBox(DisplayBox):
             image = image[:, :, ::-1]
         image = np.clip(256 * image, 0, 255).astype(np.uint8)
 
-        ch_h = int(self.sample_size * self.h / image.shape[0])
-        ch_w = int(self.sample_size * self.w / image.shape[1])
+        ch_h = max(int(self.sample_size * self.h / image.shape[0]), 1)
+        ch_w = max(int(self.sample_size * self.w / image.shape[1]), 1)
         self._cached_crosshairs = self.make_crosshairs(ch_w, ch_h)
 
         self.original_size = image.shape[:2][::-1]

@@ -1,15 +1,19 @@
 from copy import copy
+from glob import glob
 import json
 import os
 from tkinter import Label
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import warnings
 
-import numpy as np
+import cv2
 import ipywidgets as widgets
+import numpy as np
+from PIL import Image
+
 import video2vision as v2v
 
-__all__ = ['clear_all', 'get_config', 'Config', 'save_defaults']
+__all__ = ['clear_all', 'get_config', 'Config', 'ParamNotSet', 'save_defaults']
 
 
 MAX_TEXT_LENGTH = 40
@@ -42,6 +46,11 @@ PARAM_TYPES: Dict[str, str] = {
     'shift': 'int',
     'coe': 'array',
     'batch_size': 'int',
+    # These are used in testing, not in operations
+    'test_bool': 'bool',
+    'test_path': 'path',
+    'test_str': 'str',
+    'test_int': 'int',
 }
 
 # Captions for the labels in the display window.
@@ -57,7 +66,7 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'uv_linearization_path': 'UV Linearization Path',
     'linearization_values_path': 'Linearization Sample Values Path',
     'camera_path': 'Camera Sensitivities Path',
-    'is_sony_camera': 'Is Sony Camera?',
+    'is_sony_camera': 'Use Sony SLog3 Linearization?',
     'vis_test_path': 'Visible Test Path',
     'uv_test_path': 'UV Test Path',
     'test_values_path': 'Test Sample Values Path',
@@ -69,6 +78,11 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'coe': 'Alignment Warp',
     'linearization': 'Linearization',
     'sense_converter': 'Sense Converter',
+    # These are used in testing, not in operations
+    'test_bool': 'You should never see this',
+    'test_path': 'You should never see this',
+    'test_str': 'You should never see this',
+    'test_int': 'You should never see this',
 }
 
 PARAM_PARSE = {'coe': np.array}
@@ -134,8 +148,15 @@ class Config:
                     text=f'{self._label_captions[k]}: {text}'
                 )
             if self._nb_labels[k] is not None:
+                if v is None:
+                    if PARAM_TYPES[k] == 'bool':
+                        v = False
+                    elif PARAM_TYPES[k] == 'int':
+                        v = 0
+                    else:
+                        v = ''
                 if self._nb_labels[k].value != v:
-                    self._nb_labels[k].value = v or ''
+                    self._nb_labels[k].value = v
         else:
             raise KeyError(k)
 
@@ -156,13 +177,29 @@ class Config:
     @property
     def image_size(self) -> Optional[Tuple[int, int]]:
         if self._image_size is None:
-            if self['align_pipe_path'] is None:
-                raise ParamNotSet('align_pipe_path')
-            align_pipe = v2v.load_pipeline(self['align_pipe_path'])
-            self._image_size = align_pipe.get_loaders()[0].expected_size
-            self._out_extension = align_pipe.get_writers()[0].extension
+            for k in [
+                'vis_path', 'uv_path', 'uv_aligned_path', 'human_out_path',
+                'animal_out_path',
+            ]:
+                if self[k] is not None:
+                    path = self[k]
+                    if os.path.isdir(path):
+                        path = os.path.join(path, '*')
+                    try:
+                        path = glob(path)[0]
+                    except IndexError:
+                        continue
+                    else:
+                        self._image_size = _get_size(path)
+                        break
+            else:
+                if self['align_pipe_path'] is None:
+                    raise ParamNotSet('align_pipe_path')
+                align_pipe = v2v.load_pipeline(self['align_pipe_path'])
+                self._image_size = align_pipe.get_loaders()[0].expected_size
+                self._out_extension = align_pipe.get_writers()[0].extension
 
-        return self._image_size
+        return tuple(self._image_size)
 
     @property
     def is_3band_out(self) -> bool:
@@ -292,7 +329,26 @@ def save_defaults():
 def clear_all():
     global _config
 
+    # Do this first to avoid overwriting the cache
     _config['experiment_name'] = None
 
     for k in PARAM_TYPES.keys():
         _config[k] = None
+
+    _config['batch_size'] = 16
+    _config._out_extension = _config._image_size = None
+
+
+def _get_size(path: str) -> Tuple[int, int]:
+    '''
+    Extracts and returns the size of an image or video on disk, as (height,
+    width).
+    '''
+    if path.lower().endswith('.mp4'):
+        reader = cv2.VideoCapture(path)
+        w = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        return (w, h)
+    else:
+        with Image.open(path) as image:
+            return image.size

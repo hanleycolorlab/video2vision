@@ -60,21 +60,13 @@ def build_and_run_alignment_pipeline():
 
     # If cached values are available, use them
     if config['coe'] is not None:
+        if config['shift'] is None:
+            raise RuntimeError('Found warp parameters but not temporal shift')
         # Find alignment operator
         align_op.coe = config['coe']
         align_op.output_size = config.image_size
         if isinstance(align_op, v2v.AutoTemporalAlign):
-            if config['shift'] is not None:
-                align_op.time_shift = config['shift']
-            else:
-                raise RuntimeError(
-                    'Found warp parameters but not temporal shift'
-                )
-        elif config['shift'] != 0:
-            raise RuntimeError(
-                'Found temporal shift in config no AutoTemporalAlign in '
-                'pipeline'
-            )
+            align_op.time_shift = config['shift']
     elif config['shift'] is not None:
         raise RuntimeError('Found temporal shift but not warp parameters')
 
@@ -91,8 +83,13 @@ def build_and_run_alignment_pipeline():
         print('Pipeline already ran')
 
     else:
-        align_pipe.run()
-        print('Pipeline complete')
+        try:
+            align_pipe.run()
+        except v2v.AlignmentNotFound:
+            print('Failed to find alignment. Check inputs.')
+            return
+        else:
+            print('Pipeline complete')
 
     if config['coe'] is None:
         config['coe'] = align_op.coe
@@ -115,7 +112,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         raise RuntimeError('Found time shift but not spatial warp')
     if line_op is None:
         line_op_cache_path = os.path.join(
-            config.get('experiment_name', ''), 'line_op.json'
+            config['experiment_name'] or '', 'line_op.json'
         )
         if config.use_cache and os.path.exists(line_op_cache_path):
             print('Reloading linearizer from cache.')
@@ -125,7 +122,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
             return
     for k in [
         'align_pipe_path', 'uv_path', 'vis_path', 'animal_out_path',
-        'sense_converter_path', 'human_out_path',
+        'sense_converter_path', 'human_out_path', 'animal_sensitivity_path',
     ]:
         if not config[k]:
             print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
@@ -172,6 +169,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     )
 
     full_pipe.run()
+    print('Pipeline complete')
 
 
 def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
@@ -181,7 +179,7 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
     '''
     config = get_config()
 
-    cache_path = os.path.join(config['experiment_name'], 'line_op.json')
+    cache_path = os.path.join(config['experiment_name'] or '', 'line_op.json')
 
     if config.use_cache and os.path.exists(cache_path):
         print('Reloading from cache.')
@@ -190,7 +188,7 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
         print('Please select samples before building linearizer.')
         return
     for k in ['linearization_values_path', 'camera_path', 'is_sony_camera']:
-        if not config[k]:
+        if config[k] is None:
             print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
             return
 
@@ -358,9 +356,10 @@ def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \
         -> Image:
     config = get_config()
 
-    if config['align_pipe_path'] is None:
-        print(f"Please specify {PARAM_CAPTIONS['align_pipe_path'].lower()}")
-        return
+    for k in ['align_pipe_path', 'uv_path', 'vis_path']:
+        if config[k] is None:
+            print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
+            return
     if config['coe'] is None:
         if config['shift'] is not None:
             raise RuntimeError('Found spatial warp but not time shift')
@@ -408,10 +407,6 @@ def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \
 
 def make_final_displaybox() -> DisplayBox:
     config = get_config()
-
-    if not config['animal_out_path']:
-        print('Please specify animal output path.')
-        return
 
     try:
         if config.is_3band_out:

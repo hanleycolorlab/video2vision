@@ -2,7 +2,6 @@ import json
 import os
 from typing import Optional, Tuple
 
-import cv2
 import numpy as np
 from PIL import Image
 
@@ -12,9 +11,8 @@ from .config import get_config, ParamNotSet
 
 __all__ = [
     'coefficient_of_determination', 'gamma_scale', 'get_cache_path',
-    'get_loader', 'get_shift', 'get_size', 'load_csv', 'load_operator',
-    'make_displayable', 'mean_absolute_error', 'resize',
-    'signal_to_noise_ratio',
+    'get_loader', 'get_shift', 'load_csv', 'load_operator', 'make_displayable',
+    'mean_absolute_error', 'resize', 'signal_to_noise_ratio',
 ]
 
 
@@ -34,7 +32,7 @@ def gamma_scale(image):
     # Coerce to [0, 1] range
     pix_min = image.min((0, 1), keepdims=True)
     pix_max = image.max((0, 1), keepdims=True)
-    image = (image - pix_min) / (pix_max - pix_min)
+    image = (image - pix_min) / np.clip(pix_max - pix_min, 1e-6, 1)
     return image ** 2.2
 
 
@@ -72,20 +70,6 @@ def get_shift(which: str) -> int:
         return max(config['shift'], 0)
     else:
         return max(-config['shift'], 0)
-
-
-def get_size(path: str) -> Tuple[int, int]:
-    '''
-    Extracts and returns the size of an image or video on disk, as (height,
-    width).
-    '''
-    if path.lower().endswith('.mp4'):
-        reader = cv2.VideoCapture(path)
-        w = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        return (w, h)
-    else:
-        return Image.open(path).size
 
 
 def load_csv(path: str) -> np.ndarray:
