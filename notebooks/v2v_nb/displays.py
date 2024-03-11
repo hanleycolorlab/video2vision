@@ -91,7 +91,8 @@ class DisplayBox(widgets.VBox):
         '''
         with self.buttons.disable():
             images = [
-                r.get_frame(t + s) for r, s in zip(self.loaders, self.shifts)
+                r.get_frame(t + s, noscale=True)
+                for r, s in zip(self.loaders, self.shifts)
             ]
             self.set_images(*images)
 
@@ -100,17 +101,17 @@ class DisplayBox(widgets.VBox):
         Sets the current image(s).
         '''
         # Apply gamma scaling to ensure visually correct display
-        images = [gamma_scale(image) for image in images]
         im_w, im_h = self.w // len(images), self.h
 
         x = 0
         for image in images:
             # Convert from BGR, float32, [0, 1] to RGB, uint8, [0, 255]
-            if image.shape[2] == 3:
+            if (image.ndim == 3) and (image.shape[2] == 3):
                 image = image[:, :, ::-1]
             elif image.shape[2] == 1:
                 image = image[:, :, 0]
-            image = np.clip(256 * image, 0, 255).astype(np.uint8)
+            if image.dtype != np.uint8:
+                raise NotImplementedError(image.dtype)
             if image.shape[:2] != (im_h, im_w):
                 image = resize(image, (im_w, im_h))
             self.display.paste(Image.fromarray(image), (x, 0))
@@ -413,24 +414,22 @@ class SelectorBox(DisplayBox):
         '''
         with self.buttons.disable():
             self.t = t
-            image = self.loaders[0].get_frame(t) + self.shifts[0]
+            image = self.loaders[0].get_frame(
+                t + self.shifts[0], noscale=True
+            )
             if not noauto:
                 self._autofind_crosshairs(image)
             self.set_images(image)
 
     def set_images(self, image: np.ndarray):
+        # TODO: Fix
         if self.align_pipeline is not None:
             image = self.align_pipeline(image, np.empty_like(image))
         # Cache original image to use in retrieving samples
         self._original_image = image
 
-        # Apply gamma scaling to ensure visually correct display
-        image = gamma_scale(image)
-
-        # Convert from BGR, float32, [0, 1] to RGB, uint8, [0, 255]
         if (image.ndim == 3) and (image.shape[2] == 3):
             image = image[:, :, ::-1]
-        image = np.clip(256 * image, 0, 255).astype(np.uint8)
 
         ch_h = max(int(self.sample_size * self.h / image.shape[0]), 1)
         ch_w = max(int(self.sample_size * self.w / image.shape[1]), 1)
