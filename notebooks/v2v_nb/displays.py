@@ -4,6 +4,7 @@ import json
 import os
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import cv2
 import ipyevents as events
 import ipywidgets as widgets
 import numpy as np
@@ -11,8 +12,6 @@ from PIL import Image, ImageDraw, ImageFont
 import traitlets
 
 import video2vision as v2v
-
-from .utils import gamma_scale, resize
 
 __all__ = ['DisplayBox', 'GhostBox', 'SelectorBox']
 
@@ -113,7 +112,7 @@ class DisplayBox(widgets.VBox):
             if image.dtype != np.uint8:
                 raise NotImplementedError(image.dtype)
             if image.shape[:2] != (im_h, im_w):
-                image = resize(image, (im_w, im_h))
+                image = cv2.resize(image, (im_w, im_h))
             self.display.paste(Image.fromarray(image), (x, 0))
             x += image.shape[1]
         self.display_image.value = self.display._repr_png_()
@@ -294,6 +293,7 @@ class SelectorBox(DisplayBox):
 
     def _autofind_crosshairs(self, image):
         if self.auto_op is not None:
+            image = image.astype(np.float32) / 256.
             try:
                 crosshairs, _ = self.auto_op._locate_samples(image)
             except Exception:
@@ -310,6 +310,7 @@ class SelectorBox(DisplayBox):
         samples = v2v.utils.extract_samples(
             self._original_image, self.crosshairs, self.sample_size
         )
+        samples = samples / 256.
         types = np.array(self.crosshair_type, dtype=bool)
         reidx = [self.idxs.index(i) for i in range(samples.shape[0])]
 
@@ -424,7 +425,9 @@ class SelectorBox(DisplayBox):
     def set_images(self, image: np.ndarray):
         # TODO: Fix
         if self.align_pipeline is not None:
+            image = image.astype(np.float32) / 256.
             image = self.align_pipeline(image, np.empty_like(image))
+            image = np.clip(256 * image, 0, 255).astype(np.uint8)
         # Cache original image to use in retrieving samples
         self._original_image = image
 
@@ -437,7 +440,7 @@ class SelectorBox(DisplayBox):
 
         self.original_size = image.shape[:2][::-1]
         if (self.h, self.w) != image.shape[:2]:
-            image = resize(image, (self.w, self.h))
+            image = cv2.resize(image, (self.w, self.h))
 
         self._cached_image = image
         self._update_image()

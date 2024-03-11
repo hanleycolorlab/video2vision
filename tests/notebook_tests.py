@@ -160,7 +160,7 @@ class DisplayTest(unittest.TestCase):
             path_0 = os.path.join(temp_root, '0.png')
             Image.fromarray(image).save(path_0)
 
-            image[:] = 255
+            image[:] = 0
             path_1 = os.path.join(temp_root, '1.png')
             Image.fromarray(image).save(path_1)
 
@@ -186,13 +186,13 @@ class DisplayTest(unittest.TestCase):
             display_box.buttons.children[2].click()
             display_image = np.array(display_box.display)
             self.assertEqual(display_image.shape, (4, 4, 3))
-            self.assertTrue((display_image[0, 0] == 55).all())
+            self.assertTrue((display_image[0, 0] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
 
             display_box.buttons.children[0].click()
             display_image = np.array(display_box.display)
             self.assertEqual(display_image.shape, (4, 4, 3))
-            self.assertTrue((display_image[0, 0] == 55).all())
+            self.assertTrue((display_image[0, 0] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
 
     def test_ghost_box(self):
@@ -205,7 +205,7 @@ class DisplayTest(unittest.TestCase):
             # TODO: Hook display_image instead of display
             display_image = np.array(ghost_box.display)
             self.assertEqual(display_image.shape, (4, 4, 3))
-            self.assertTrue((display_image[0, 0] == (55, 0, 55)).all())
+            self.assertTrue((display_image[0, 0] == (64, 0, 64)).all())
             self.assertTrue((display_image[mask] == 0).all())
 
     def test_selector_box(self):
@@ -256,7 +256,7 @@ class DisplayTest(unittest.TestCase):
             selector_box.idxs = [0]
             sample_values, sample_types = selector_box.get_samples()
             self.assertEqual(sample_values.shape, (1, 3))
-            self.assertTrue((sample_values == (255. / 256.)).all())
+            self.assertTrue((sample_values == 0).all())
             self.assertEqual(sample_types.shape, (1,))
             self.assertTrue((sample_types == 0).all())
 
@@ -282,7 +282,7 @@ class DisplayTest(unittest.TestCase):
             mask[0, 3, :] = False
 
             self.assertEqual(display_image.shape, (4, 4, 3))
-            self.assertTrue((display_image[0, 3] == 55).all())
+            self.assertTrue((display_image[0, 3] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
 
     def test_selector_box_with_autolocator(self):

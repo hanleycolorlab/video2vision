@@ -12,7 +12,7 @@ from .config import get_config, ParamNotSet
 __all__ = [
     'coefficient_of_determination', 'gamma_scale', 'get_cache_path',
     'get_loader', 'get_shift', 'load_csv', 'load_operator', 'make_displayable',
-    'mean_absolute_error', 'resize', 'signal_to_noise_ratio',
+    'mean_absolute_error', 'signal_to_noise_ratio',
 ]
 
 
@@ -116,14 +116,6 @@ def mean_absolute_error(gt: np.ndarray, preds: np.ndarray) -> np.ndarray:
     Calculates mean absolute error.
     '''
     return np.abs(gt - preds).mean()
-
-
-def resize(image: np.ndarray, out_size: Tuple[int, int]):
-    '''
-    Resizes an image to a specified size.
-    '''
-    # Convenience function for resizing images using PIL.
-    return np.array(Image.fromarray(image).resize(out_size))
 
 
 def signal_to_noise_ratio(gt: np.ndarray, preds: np.ndarray) -> np.ndarray:
