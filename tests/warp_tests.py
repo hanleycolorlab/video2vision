@@ -16,7 +16,7 @@ class RotateTest(unittest.TestCase):
         warp_op = v2v.Rotate(90, output_size=(30, 20))
 
         # Check basic output
-        image = np.arange(600.).reshape(20, 30)
+        image = np.arange(600., dtype=np.float32).reshape(20, 30)
         should_be = np.concatenate(
             (np.zeros((20, 5)), image[:, 6:-4].T[::-1, :], np.zeros((20, 5))),
             axis=1
@@ -110,9 +110,9 @@ class TranslationTest(unittest.TestCase):
         warp_op = v2v.Translation(shift_x=-1, shift_y=0, output_size=(30, 20))
 
         # Check basic output
-        image = np.arange(600.).reshape(20, 30)
+        image = np.arange(600., dtype=np.float32).reshape(20, 30)
         should_be = np.concatenate((image[:, 1:], np.zeros((20, 1))), axis=1)
-        should_be = should_be.reshape(20, 30, 1)
+        should_be = should_be.reshape(20, 30, 1).astype(np.float32)
         mask_should_be = np.ones((20, 30), dtype=np.uint8)
         mask_should_be[:, -1] = 0
         out = warp_op({'image': image, 'dummy': 1})
@@ -204,12 +204,12 @@ class WarpTest(unittest.TestCase):
         warp_op = v2v.Warp(coe=coe, output_size=(30, 20))
 
         # Check basic output
-        image = np.arange(600.).reshape(20, 30)
+        image = np.arange(600., dtype=np.float32).reshape(20, 30)
         should_be = np.concatenate(
             (np.zeros((20, 5)), image[:, 6:-4].T[::-1, :], np.zeros((20, 5))),
             axis=1
         )
-        should_be = should_be.reshape(20, 30, 1)
+        should_be = should_be.reshape(20, 30, 1).astype(np.float32)
         mask_should_be = np.concatenate(
             (np.zeros((20, 5)), np.ones((20, 20)), np.zeros((20, 5))),
             axis=1
@@ -263,12 +263,12 @@ class WarpTest(unittest.TestCase):
         warp_op = v2v.Warp(coe=coe, output_size=(30, 20))
 
         # Check basic output
-        image = np.arange(600.).reshape(20, 30)
+        image = np.arange(600., dtype=np.float32).reshape(20, 30)
         should_be = np.concatenate(
             (np.zeros((20, 5)), image[:, 6:-4].T[::-1, :], np.zeros((20, 5))),
             axis=1
         )
-        should_be = should_be.reshape(20, 30, 1)
+        should_be = should_be.reshape(20, 30, 1).astype(np.float32)
         out = warp_op({'image': image})
         self.assertTrue((out['image'] == should_be).all())
         self.assertEqual(out['image'].shape, (20, 30, 1))

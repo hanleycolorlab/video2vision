@@ -69,13 +69,13 @@ class CoercionTests(unittest.TestCase):
 
     def test_coerce_to_image(self):
         # Check coercion of 2-dimensional images
-        x = np.arange(20.).reshape(4, 5)
+        x = np.arange(20., dtype=np.float32).reshape(4, 5)
         x = v2v.utils._coerce_to_image(x)
         self.assertEqual(x.shape, (4, 5, 1))
         self.assertEqual(x.dtype, np.float32)
 
         # Check coercion of 3-dimensional images
-        x = np.arange(20.).reshape(4, 5, 1)
+        x = np.arange(20., dtype=np.float32).reshape(4, 5, 1)
         x = v2v.utils._coerce_to_image(x)
         self.assertEqual(x.shape, (4, 5, 1))
         self.assertEqual(x.dtype, np.float32)
@@ -84,7 +84,7 @@ class CoercionTests(unittest.TestCase):
         x = np.arange(240, dtype=np.uint8).reshape(4, 5, 4, 3)
         x = v2v.utils._coerce_to_image(x)
         self.assertEqual(x.shape, (4, 5, 4, 3))
-        self.assertEqual(x.dtype, np.float32)
+        self.assertEqual(x.dtype, np.uint8)
 
         # Check coercion of 1-dimensional images
         with self.assertRaises(ValueError):
@@ -93,17 +93,6 @@ class CoercionTests(unittest.TestCase):
         # Check coercion of 5-dimensional images
         with self.assertRaises(ValueError):
             v2v.utils._coerce_to_image(np.arange(240.).reshape(4, 5, 1, 4, 3))
-
-        # Check handling of weird dtypes
-        x = np.arange(20, dtype=np.int64).reshape(4, 5, 1)
-        x = v2v.utils._coerce_to_image(x)
-        self.assertEqual(x.dtype, np.float32)
-
-        # Check noscale
-        x = np.arange(20, dtype=np.uint8).reshape(4, 5)
-        x = v2v.utils._coerce_to_image(x, noscale=True)
-        self.assertEqual(x.shape, (4, 5, 1))
-        self.assertEqual(x.dtype, np.uint8)
 
     def test_coerce_to_mask(self):
         # Check coercion of 2-dimensional masks
@@ -137,7 +126,7 @@ class UtilitiesTests(unittest.TestCase):
             w, h = (t - 5) * 10, 2 * (t - 4)
             images[:h, :w, t, :] += 0.9
 
-        images = {'image': images, 'mask': mask}
+        images = {'image': images.astype(np.float32), 'mask': mask}
 
         out = v2v.utils.detect_motion(images)
         should_be = np.array(([False] * 7) + ([True] * 3))

@@ -673,9 +673,10 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertIs(align_op_2.output_size, None)
         self.assertIs(align_op_2.time_shift, None)
 
-        image_1 = np.arange(0., 1., 0.1, dtype=np.float32)
+        image_1 = np.arange(0., 1., 0.1)
         image_1 = image_1.repeat(10).reshape(10, 10, 1, 1)
         image_1 = image_1 + np.arange(0., 1., 0.2).reshape(1, 1, 5, 1)
+        image_1 = image_1.astype(np.float32)
         image_2 = image_1 + 0.2
 
         out_1 = align_op({'image': image_1}, {'image': image_2})
@@ -696,7 +697,7 @@ class AutoTemporalAlignTest(unittest.TestCase):
 
         out_1 = align_op({'image': image_2}, {'image': image_1})
         out_2 = align_op_3({'image': image_2}, {'image': image_1})
-        self.assertTrue((out_1['image'] == out_2['image']).all())
+        self.assertTrue((out_1['image'][:, :, 1:, :] == out_2['image']).all())
 
 
 if __name__ == '__main__':

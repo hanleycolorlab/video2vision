@@ -162,8 +162,8 @@ class HistogramStretchTest(unittest.TestCase):
         self.assertTrue(isinstance, v2v.operators.HoldToken)
         with self.assertRaises(v2v.ResetPipeline):
             hist_op({'image': image_2, 'final': True})
-        self.assertTrue(isclose(hist_op.floor, 0.01758793974295285))
-        self.assertTrue(isclose(hist_op.ceiling, 0.9824120700359344))
+        self.assertTrue(isclose(hist_op.floor, 0.017587939698492462))
+        self.assertTrue(isclose(hist_op.ceiling, 0.9824120603015076))
         out = hist_op({'image': np.linspace(0, 1, 100).reshape(10, 10, 1)})
         self.assertEqual(out.keys(), {'image'})
         self.assertEqual(out['image'].shape, (10, 10, 1))
@@ -208,7 +208,7 @@ class LinearMapTest(unittest.TestCase):
         lm_op = v2v.LinearMap(np.random.normal(0, 1, (3, 4)))
 
         # Check basic case
-        image = np.arange(1800).reshape(30, 20, 3)
+        image = np.arange(1800).reshape(30, 20, 3).astype(np.float32)
         out = lm_op({'image': image, 'dummy': 1})
         self.assertTrue(isinstance(out, dict))
         self.assertEqual(out.keys(), {'image', 'dummy'})
@@ -218,7 +218,7 @@ class LinearMapTest(unittest.TestCase):
         self.assertEqual(out.dtype, np.float32)
 
         # Check video
-        image = np.arange(10 * 1800).reshape(30, 20, 10, 3)
+        image = np.arange(10 * 1800).reshape(30, 20, 10, 3).astype(np.float32)
         out = lm_op({'image': image})
         self.assertTrue(isinstance(out, dict))
         self.assertEqual(out.keys(), {'image'})
@@ -333,8 +333,8 @@ class PadTest(unittest.TestCase):
         This tests basic coercion and handling.
         '''
         # Check basic polynomials
-        image = np.arange(6.).reshape(2, 3)
-        should_be = np.zeros((4, 5))
+        image = np.arange(6.).reshape(2, 3).astype(np.float32)
+        should_be = np.zeros((4, 5), dtype=np.float32)
         should_be[1:3, 1:4] = image
         should_be = should_be.reshape(4, 5, 1)
         mask_should_be = np.zeros((4, 5), dtype=np.uint8)
@@ -355,7 +355,7 @@ class PadTest(unittest.TestCase):
 
         # Check video
         video = np.stack([image.reshape(2, 3, 1)] * 7, axis=2)
-        should_be = np.zeros((4, 5, 7))
+        should_be = np.zeros((4, 5, 7), dtype=np.float32)
         should_be[1:3, 1:4, :] = image.reshape(2, 3, 1)
         should_be = should_be.reshape(4, 5, 7, 1)
         out = pad_op({'image': video})

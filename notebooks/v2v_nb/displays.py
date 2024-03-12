@@ -293,7 +293,6 @@ class SelectorBox(DisplayBox):
 
     def _autofind_crosshairs(self, image):
         if self.auto_op is not None:
-            image = image.astype(np.float32) / 256.
             try:
                 crosshairs, _ = self.auto_op._locate_samples(image)
             except Exception:
@@ -351,7 +350,7 @@ class SelectorBox(DisplayBox):
             # Get the next index to be assigned by looking for the lowest index
             # that has not yet been used.
             if self.idxs:
-                idx = min({i + 1 for i in self.idxs} - set(self.idxs))
+                idx = min(({0} | {i + 1 for i in self.idxs}) - set(self.idxs))
             else:
                 idx = 0
             self.idxs.append(idx)

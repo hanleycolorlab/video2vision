@@ -508,7 +508,7 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None) \
         return SelectorBox(
             get_loader(which), get_shift(which), 50, box_color=(0, 255, 255),
             auto_op=config[auto_key], cache_path=get_cache_path(which),
-            output_size=0.25, copy_from=copy_from, align_pipeline=align_pipe,
+            output_size=0.10, copy_from=copy_from, align_pipeline=align_pipe,
         )
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')

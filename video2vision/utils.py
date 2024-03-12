@@ -110,7 +110,7 @@ def _coerce_to_dict(x: Any) -> Dict:
     return x
 
 
-def _coerce_to_image(image: Any, noscale: bool = False) -> np.ndarray:
+def _coerce_to_image(image: Any) -> np.ndarray:
     '''
     Convenience function to coerce an arbitrary objects to a
     :class:`numpy.ndarray` that is either 3- or 4-dimensional.
@@ -120,12 +120,14 @@ def _coerce_to_image(image: Any, noscale: bool = False) -> np.ndarray:
     # Assume a 2-dimensional image is an image with a single band.
     if image.ndim == 2:
         image = image.reshape(*image.shape, 1)
+    # We do want to be able to support some uint dtypes for some operations
+    # requiring very fast processing. But we never want to allow float64.
+    if image.dtype == np.float64:
+        image = image.astype(np.float32)
     elif image.ndim not in {3, 4}:
         raise ValueError(
             f'Image must be 3- or 4-dimensional, not {image.shape}'
         )
-    if (not noscale) and (image.dtype != np.float32):
-        image = image.astype(np.float32)
     return image
 
 
@@ -389,11 +391,14 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
     detector_params.adaptiveThreshWinSizeMax = 256
 
     with _coerce_to_4dim(x):
+        image = x['image']
         # ARUCO detector requires uint8, but we now work in float32. It also
         # requires that the image be either 1- or 3-channel, so we convert to
-        # greyscale.
-        image = x['image'].mean(-1, keepdims=True, dtype=np.float32)
-        image = np.clip(image * 256., 0, 255).astype(np.uint8)
+        # greyscale if need be.
+        if image.shape[-1] not in {3, 1}:
+            image = image.mean(-1, keepdims=True, dtype=x['image'].dtype)
+        if image.dtype != np.uint8:
+            image = np.clip(image * 256., 0, 255).astype(np.uint8)
 
         for t in range(x['image'].shape[2]):
             pts, ids, _ = cv2.aruco.detectMarkers(

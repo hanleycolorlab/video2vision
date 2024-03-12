@@ -123,7 +123,7 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
         if not noscale:
             image = _convert_and_scale_uint8(image, out=out)
 
-    return _coerce_to_image(image, noscale=noscale)
+    return _coerce_to_image(image)
 
 
 def save(image: np.ndarray, path: str):
