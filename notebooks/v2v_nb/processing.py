@@ -421,7 +421,7 @@ def make_final_displaybox() -> DisplayBox:
 
         return DisplayBox(
             *loaders, get_loader('human_out_path'),
-            output_size=0.5,
+            output_size=0.25,
         )
     except FileNotFoundError as err:
         print(f'Could not find file {err.args[0]}; please check paths')
@@ -462,7 +462,7 @@ def make_initial_displaybox() -> DisplayBox:
             get_loader('uv_aligned_path'),
             get_loader('uv_path'),
             shifts=(max(-config['shift'], 0), 0, 0),
-            output_size=0.5,
+            output_size=0.15,
         )
     except FileNotFoundError as err:
         print(f'Could not find file {err.args[0]}; please check paths')
