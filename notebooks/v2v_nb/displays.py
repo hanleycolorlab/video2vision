@@ -15,7 +15,7 @@ import video2vision as v2v
 
 __all__ = ['DisplayBox', 'GhostBox', 'SelectorBox']
 
-ASSOCIATION_RADIUS_SQ = 32**2
+ASSOCIATION_RADIUS_SQ = 4**2
 
 _PAIR = traitlets.Tuple(traitlets.Int(), traitlets.Int())
 
@@ -71,18 +71,20 @@ class DisplayBox(widgets.VBox):
         else:
             self.w, self.h = output_size
 
-        # Determine allowed values for t
-        num_frames = min(len(loader) for loader in self.loaders)
-        min_t, max_t = -min(shifts), num_frames - max(shifts)
-
         # Construct widgets
         self.display = Image.new('RGB', (self.w, self.h))
-        self.buttons = ForwardBackwardButtons(self.set_frame, min_t, max_t, t)
+        self.buttons = self.make_button_panel(t)
         self.display_image = widgets.Image(format='png')
         super().__init__((self.display_image, self.buttons))
 
         # Display first image
         self.set_frame(t)
+
+    def make_button_panel(self, t: int = 0) -> widgets.Widget:
+        # Break this out as a method so it can be overridden by subclasses.
+        num_frames = min(len(loader) for loader in self.loaders)
+        min_t, max_t = -min(self.shifts), num_frames - max(self.shifts)
+        return ButtonPanel(self.set_frame, min_t, max_t, t)
 
     def set_frame(self, t: int):
         '''
@@ -126,13 +128,13 @@ class DisplayBox(widgets.VBox):
         self.buttons.t = t
 
 
-class ForwardBackwardButtons(widgets.HBox):
+class ButtonPanel(widgets.HBox):
     '''
     This widget provides a set of buttons for paging forward and backward in a
     video or set of images.
     '''
     def __init__(self, call_func: Callable, min_t: int, max_t: int,
-                 t: int = 0):
+                 t: int = 0, clear_func: Optional[Callable] = None):
         self.t, self.min_t, self.max_t = t, min_t, max_t
         self._call_func = call_func
 
@@ -140,6 +142,13 @@ class ForwardBackwardButtons(widgets.HBox):
         for shift in [-100, -10, -1, 1, 10, 100]:
             buttons.append(widgets.Button(description=f'{shift:+}'))
             buttons[-1].on_click(self._get_call_func(shift))
+
+        if clear_func is not None:
+            def _clear(b):
+                clear_func()
+
+            buttons.append(widgets.Button(description='Clear All'))
+            buttons[-1].on_click(_clear)
 
         super().__init__(buttons)
 
@@ -302,6 +311,16 @@ class SelectorBox(DisplayBox):
                 self.crosshair_type = [0 for _ in self.idxs]
                 self.crosshairs = crosshairs.astype(np.int64).tolist()
 
+    def clear_crosshairs(self):
+        self.idxs = []
+        self.crosshair_type = []
+        self.crosshairs = []
+
+        if self.cache_path is not None:
+            self.save_crosshairs(self.cache_path)
+
+        self._update_image()
+
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
         if max(self.idxs) + 1 != len(self.idxs):
             raise RuntimeError('Not all samples selected')
@@ -378,6 +397,14 @@ class SelectorBox(DisplayBox):
                 self._update_image()
         else:
             return crosshairs['t']
+
+    def make_button_panel(self, t: int = 0) -> widgets.Widget:
+        # Break this out as a method so it can be overridden by subclasses.
+        num_frames = min(len(loader) for loader in self.loaders)
+        min_t, max_t = -min(self.shifts), num_frames - max(self.shifts)
+        return ButtonPanel(
+            self.set_frame, min_t, max_t, t, self.clear_crosshairs
+        )
 
     @lru_cache
     def make_crosshairs(self, w: int, h: int) -> Tuple[np.ndarray, np.ndarray]:

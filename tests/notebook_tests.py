@@ -260,6 +260,15 @@ class DisplayTest(unittest.TestCase):
             self.assertEqual(sample_types.shape, (1,))
             self.assertTrue((sample_types == 0).all())
 
+            # Clear all
+            selector_box.children[1].children[-1].click()
+            self.assertEqual(selector_box.idxs, [])
+            self.assertEqual(selector_box.crosshairs, [])
+            self.assertEqual(selector_box.crosshair_type, [])
+            display_image = np.array(selector_box.display)
+            should_be = np.zeros((4, 4, 3), dtype=np.uint8)
+            self.assertTrue((display_image == should_be).all())
+
     def test_selector_box_with_align(self):
         align_pipe = v2v.Pipeline()
         loader_idx = align_pipe.add_operator(
