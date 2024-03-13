@@ -49,7 +49,7 @@ class LabeledBox(widgets.VBox):
         self.favorite.continuous_update = False
         self.favorite.observe(self.callback, 'value')
 
-    def callback(self, checkbox):
+    def callback(self, widget):
         config = get_config()
         config[self.key] = self.value
 
@@ -80,12 +80,28 @@ class BoolBox(LabeledBox):
 class IntBox(LabeledBox):
     def __init__(self, key: str):
         config = get_config()
-        textbox = widgets.IntText(
-            value=config._values[key],
+
+        if config._values[key] is None:
+            value = ''
+        else:
+            value = str(config._values[key])
+
+        textbox = widgets.Text(
+            value=value,
             disabled=False,
             layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
         )
         super().__init__(key, textbox)
+
+    def callback(self, widget):
+        config = get_config()
+        if self.value == '':
+            config[self.key] = None
+        else:
+            try:
+                config[self.key] = int(self.value)
+            except ValueError:
+                self.value = str(config[self.key])
 
 
 class PathBox(LabeledBox):

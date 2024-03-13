@@ -45,7 +45,22 @@ class ChoicesTest(unittest.TestCase):
         self._test_widget('test_bool', v2v_nb.BoolBox, True, False)
 
     def test_int_box(self):
-        self._test_widget('test_int', v2v_nb.IntBox, 1, 2)
+        config = v2v_nb.get_config()
+        config['test_int'] = 1
+
+        widget = v2v_nb.IntBox('test_int')
+        self.assertEqual(widget.children[0].value, 'You should never see this')
+        self.assertTrue(config._nb_labels['test_int'] is widget.favorite)
+        self.assertEqual(widget.value, '1')
+
+        widget.value = '2'
+        self.assertEqual(config['test_int'], 2)
+
+        widget_2 = v2v_nb.IntBox('test_int')
+        self.assertTrue(widget_2.favorite is widget.favorite)
+
+        config['test_int'] = 1
+        self.assertEqual(widget.value, '1')
 
     def test_path_box(self):
         self._test_widget('test_path', v2v_nb.PathBox, '/tmp', '/unq')

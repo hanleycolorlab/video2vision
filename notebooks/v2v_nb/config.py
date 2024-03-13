@@ -148,14 +148,12 @@ class Config:
                     text=f'{self._label_captions[k]}: {text}'
                 )
             if self._nb_labels[k] is not None:
-                if v is None:
-                    if PARAM_TYPES[k] == 'bool':
-                        v = False
-                    elif PARAM_TYPES[k] == 'int':
-                        v = 0
-                    else:
-                        v = ''
                 if self._nb_labels[k].value != v:
+                    # TODO: Move this logic into the widget
+                    if isinstance(self._nb_labels[k], widgets.Checkbox):
+                        v = bool(v)
+                    else:
+                        v = '' if (v is None) else str(v)
                     self._nb_labels[k].value = v
         else:
             raise KeyError(k)
