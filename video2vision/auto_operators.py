@@ -555,7 +555,42 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         self.seen_enough_frames = False
 
     def apply(self, source: Dict, control: Dict) -> Union[Dict, HoldToken]:
-        if self.coe is not None:
+        # The control flow here is a little complicated. We need to be able to
+        # handle both of the following cases:
+        #
+        # * self.time_shift and self.coe are both None and need to be found:
+        #   1. First, check if we have motion in enough frames. If we don't,
+        #      return a HoldToken and wait until we do. If we do, then call
+        #      AutoTemporalAlign._find_alignment and either raise a
+        #      ResetPipeline or return what it returns, depending on whether we
+        #      skipped a batch along the way.
+        #   2. For every possible time shift, AutoTemporalAlign._find_alignment
+        #      calls:
+        #      1. First call _shift to prepare a time-shifted set of frames.
+        #      2. Then call AutoAlign._find_alignment to find the alignment. If
+        #         this raises AlignmentNotFound, just continue to the next
+        #         time shift.
+        #      3. Calculate the ECC of the aligned frames. If it beats the best
+        #         we've seen yet, retain those parameters.
+        #      Assuming we've found a suitable shift, we set self.coe and
+        #      self.time_shift and call AutoTemporalAlign.apply again,
+        #      returning what it returns.
+        # * self.time_shift is not None and self.coe is None:
+        #   1. Call _shift to prepare a time-shifted set of frames.
+        #   2. Call AutoAlign.apply and return what it returns.
+        #   3. AutoAlign.apply calls self._find_alignment, which resolves to
+        #      AutoTemporalAlign._find_alignment, and returns what it returns.
+        #   4. AutoTemporalAlign._find_alignment checks that self.time_shift is
+        #      not None. Since it isn't, it calls AutoAlign._find_alignment and
+        #      returns what it returns.
+        # * self.time_shift and self.coe are both not None:
+        #   1. Call _shift to prepare a time-shifted set of frames.
+        #   2. Call AutoAlign.apply and return what it returns.
+        #   3. AutoAlign.apply calls Warp.apply and returns what it returns.
+
+        # We check time_shift, not coe, because we want to be able to specify
+        # the time_shift manually but still fit the spatial warp.
+        if self.time_shift is not None:
             source, control = self._shift(source, control, self.time_shift)
             # This is in place to handle when UV, VIS videos have different
             # length.
@@ -633,6 +668,9 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         controls, and returns the aligned outputs. This assumes that adequate
         motion is present in both.
         '''
+        if self.time_shift is not None:
+            return super()._find_alignment(source, control)
+
         best_ecc = -float('inf')
 
         # Get the number of frames available.

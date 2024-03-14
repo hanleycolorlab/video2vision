@@ -550,6 +550,56 @@ class AutoTemporalAlignTest(unittest.TestCase):
 
         align_op.release()
 
+    def test_with_specified_time_shift(self):
+        align_op = v2v.AutoTemporalAlign(
+            (0, 2), bands=[[0, 1, 2], []], time_shift=1,
+        )
+
+        image = self._build_image()
+        data_dict = {
+            'image': np.stack((np.zeros_like(image), image), axis=2),
+            'names': ['a', 'b'],
+        }
+
+        # This should be a slight rotation.
+        coe = cv2.getRotationMatrix2D(angle=1.2, center=(64, 64), scale=1)
+        warped_image = cv2.warpAffine(image, coe, (128, 128))
+        coe = np.concatenate((coe, np.array([[0, 0, 1.]])), axis=0)
+        warped_image = np.stack((warped_image, warped_image + 0.2), axis=2)
+        # Include dummy value to test it's preserved
+        warped_dict = {
+            'image': warped_image,
+            'dummy': 1,
+            'names': ['c', 'd'],
+        }
+
+        # Test on image input
+        out_dict = align_op(warped_dict, data_dict)
+        self.assertEqual(out_dict['image'].shape, (128, 128, 1, 3))
+        self.assertEqual(out_dict.get('names', 0), ['c-b'])
+
+        self.assertEqual(align_op.buff.shape, (128, 128, 1, 3))
+        self.assertEqual(align_op.buff_names, ['d'])
+        self.assertTrue(
+            (align_op.buff == warped_dict['image'][:, :, 1:2]).all()
+        )
+
+        # Check alignment is correct
+        xs, ys = np.meshgrid(np.arange(128), np.arange(128))
+        xs, ys = xs.flatten(), ys.flatten()
+        orig_xys = np.stack((xs, ys, np.ones_like(xs)), axis=1)
+        warp_xys = _warp_points(coe, orig_xys)
+        warp_xys = _warp_points(align_op.coe, warp_xys)
+        self.assertTrue((np.abs(warp_xys - orig_xys) < 1e-2).all())
+        # When we compare the images, we need to only compare the interiors,
+        # since around the edges parts of the image will have been rotated off
+        # and then back on again, leaving blank spaces.
+        out_crop = out_dict['image'][32:-32, 32:-32, 0]
+        image_crop = image[32:-32, 32:-32]
+        self.assertTrue(np.abs(out_crop - image_crop).mean() <= 1)
+
+        align_op.release()
+
     def test_without_time_shift(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
