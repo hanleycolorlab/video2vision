@@ -1,9 +1,10 @@
 '''
 Provides notebook widgets for entering selections.
 '''
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional
 
 import ipywidgets as widgets
+import numpy as np
 
 from .config import (
     clear_all,
@@ -15,7 +16,8 @@ from .config import (
 from .popup import CONFIG_PROMPTS, show_config_window
 
 __all__ = [
-    'BoolBox', 'ConfigBox', 'IntBox', 'PathBox', 'SimpleButton', 'StringBox',
+    'ArrayBox', 'BoolBox', 'ConfigBox', 'IntBox', 'PathBox', 'SimpleButton',
+    'StringBox',
 ]
 
 
@@ -23,6 +25,7 @@ TEXT_WIDTH = '420px'
 BUTTON_WIDTH = '80px'
 LABEL_HEIGHT = '20px'
 WIDGET_HEIGHT = '30px'
+CELL_WIDTH = '140px'
 
 
 class LabeledBox(widgets.VBox):
@@ -51,7 +54,8 @@ class LabeledBox(widgets.VBox):
 
     def callback(self, widget):
         config = get_config()
-        config[self.key] = self.value
+        if config[self.key] != self.value:
+            config[self.key] = self.value
 
     @property
     def favorite(self) -> widgets.Widget:
@@ -64,6 +68,73 @@ class LabeledBox(widgets.VBox):
     @value.setter
     def value(self, v):
         self.favorite.value = v
+
+
+class ArrayBox(LabeledBox):
+    def __init__(self, key: str, w: int = 3, h: int = 3):
+        config = get_config()
+        favorite = ArrayText(w=w, h=h, value=config[key])
+        button = SimpleButton('Clear', favorite.clear)
+        super().__init__(key, favorite, button)
+
+        for box in self.favorite:
+            box.observe(self.callback, 'value')
+
+    def callback(self, widget):
+        return
+
+
+class ArrayText(widgets.GridBox):
+    def __init__(self, w: int, h: int, value: Optional[np.ndarray] = None):
+        if value is None:
+            value = ['' for _ in range(w * h)]
+        elif isinstance(value, np.ndarray):
+            if value.shape != (h, w):
+                raise ValueError('Shape mismatch in value')
+            value = value.flatten()
+        else:
+            raise TypeError(value)
+
+        cell_layout = widgets.Layout(
+            width=CELL_WIDTH, height=WIDGET_HEIGHT
+        )
+        boxes = [
+            widgets.Text(value=str(v), disabled=True, layout=cell_layout)
+            for v in value
+        ]
+        grid_layout = widgets.Layout(
+            grid_template_columns=f'repeat({w}, {CELL_WIDTH})'
+        )
+        super().__init__(boxes, layout=grid_layout)
+        self.w, self.h = w, h
+
+    def __iter__(self) -> Iterator[widgets.Text]:
+        yield from self.children
+
+    def clear(self):
+        self.value = None
+
+    @property
+    def value(self):
+        try:
+            out = np.array([float(box.value) for box in self])
+        except ValueError:
+            return None
+        else:
+            return out.reshape(self.h, self.w)
+
+    @value.setter
+    def value(self, value: Optional[np.ndarray]):
+        if value is None:
+            for box in self:
+                box.value = ''
+        elif not isinstance(value, np.ndarray):
+            raise TypeError(type(value))
+        elif value.shape != (self.h, self.h):
+            raise ValueError(f'{value.shape} != ({self.h}, {self.w})')
+        else:
+            for v, box in zip(value.flatten(), self):
+                box.value = str(v)
 
 
 class BoolBox(LabeledBox):
@@ -141,6 +212,7 @@ class StringBox(LabeledBox):
 
 BOX_TYPES = {
     'bool': BoolBox, 'int': IntBox, 'path': PathBox, 'string': StringBox,
+    'array': ArrayBox,
 }
 
 

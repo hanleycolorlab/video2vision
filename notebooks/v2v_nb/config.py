@@ -47,6 +47,7 @@ PARAM_TYPES: Dict[str, str] = {
     'coe': 'array',
     'batch_size': 'int',
     # These are used in testing, not in operations
+    'test_array': 'array',
     'test_bool': 'bool',
     'test_path': 'path',
     'test_str': 'str',
@@ -79,6 +80,7 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'linearization': 'Linearization',
     'sense_converter': 'Sense Converter',
     # These are used in testing, not in operations
+    'test_array': 'You should never see this',
     'test_bool': 'You should never see this',
     'test_path': 'You should never see this',
     'test_str': 'You should never see this',
@@ -148,13 +150,12 @@ class Config:
                     text=f'{self._label_captions[k]}: {text}'
                 )
             if self._nb_labels[k] is not None:
-                if self._nb_labels[k].value != v:
-                    # TODO: Move this logic into the widget
-                    if isinstance(self._nb_labels[k], widgets.Checkbox):
-                        v = bool(v)
-                    else:
-                        v = '' if (v is None) else str(v)
-                    self._nb_labels[k].value = v
+                # TODO: Move this logic into the widget
+                if PARAM_TYPES[k] == 'bool':
+                    v = bool(v)
+                elif PARAM_TYPES[k] != 'array':
+                    v = '' if (v is None) else str(v)
+                self._nb_labels[k].value = v
         else:
             raise KeyError(k)
 

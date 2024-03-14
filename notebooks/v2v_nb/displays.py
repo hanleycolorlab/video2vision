@@ -13,6 +13,8 @@ import traitlets
 
 import video2vision as v2v
 
+from .choices import SimpleButton
+
 __all__ = ['DisplayBox', 'GhostBox', 'SelectorBox']
 
 ASSOCIATION_RADIUS_SQ = 4**2
@@ -144,11 +146,7 @@ class ButtonPanel(widgets.HBox):
             buttons[-1].on_click(self._get_call_func(shift))
 
         if clear_func is not None:
-            def _clear(b):
-                clear_func()
-
-            buttons.append(widgets.Button(description='Clear All'))
-            buttons[-1].on_click(_clear)
+            buttons.append(SimpleButton('Clear All', clear_func))
 
         super().__init__(buttons)
 

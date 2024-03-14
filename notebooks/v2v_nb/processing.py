@@ -59,16 +59,17 @@ def build_and_run_alignment_pipeline():
     align_op = align_pipe.nodes[align_idx]['operator']
 
     # If cached values are available, use them
-    if config['coe'] is not None:
-        if config['shift'] is None:
-            raise RuntimeError('Found warp parameters but not temporal shift')
-        # Find alignment operator
-        align_op.coe = config['coe']
-        align_op.output_size = config.image_size
-        if isinstance(align_op, v2v.AutoTemporalAlign):
-            align_op.time_shift = config['shift']
-    elif config['shift'] is not None:
-        raise RuntimeError('Found temporal shift but not warp parameters')
+    if (config['coe'] is not None) and (config['shift'] is None):
+        print(
+            'Found spatial warp but not temporal alignment, which is not '
+            'supported. Please either clear the warp so it can be refitted, or'
+            ' manually set the temporal shift.'
+        )
+        return
+    align_op.coe = config['coe']
+    align_op.output_size = config.image_size
+    if isinstance(align_op, v2v.AutoTemporalAlign):
+        align_op.time_shift = config['shift']
 
     # Check if output already exists
     if os.path.exists(config.out_path):
@@ -91,25 +92,19 @@ def build_and_run_alignment_pipeline():
         else:
             print('Pipeline complete')
 
-    if config['coe'] is None:
-        config['coe'] = align_op.coe
-        if isinstance(align_op, v2v.AutoTemporalAlign):
-            config['shift'] = align_op.time_shift
-        else:
-            config['shift'] = 0
+    config['coe'] = align_op.coe
+    if isinstance(align_op, v2v.AutoTemporalAlign):
+        config['shift'] = align_op.time_shift
+    else:
+        config['shift'] = 0
 
 
 def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     config = get_config()
 
-    if config['coe'] is None:
-        if config['shift'] is not None:
-            raise RuntimeError('Found spatial warp but not time shift')
-        else:
-            print('Alignment must be run before linearization.')
-            return
-    if config['shift'] is None:
-        raise RuntimeError('Found time shift but not spatial warp')
+    if (config['coe'] is None) or (config['shift'] is None):
+        print('Alignment must be run before linearization.')
+        return
     if line_op is None:
         line_op_cache_path = os.path.join(
             config['experiment_name'] or '', 'line_op.json'
@@ -360,14 +355,9 @@ def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \
         if config[k] is None:
             print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
             return
-    if config['coe'] is None:
-        if config['shift'] is not None:
-            raise RuntimeError('Found spatial warp but not time shift')
-        else:
-            print('Alignment must be run before linearization.')
-            return
-    if config['shift'] is None:
-        raise RuntimeError('Found time shift but not spatial warp')
+    if (config['coe'] is None) or (config['shift'] is None):
+        print('Alignment must be run before linearization.')
+        return
     if line_op is None:
         if config.use_cache and os.path.exists(config.line_op_cache_path):
             print('Reloading linearizer from cache.')
@@ -477,14 +467,9 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None) \
     if config['align_pipe_path'] is None:
         print(f"Please specify {PARAM_CAPTIONS['align_pipe_path'].lower()}")
         return
-    if config['coe'] is None:
-        if config['shift'] is not None:
-            raise RuntimeError('Found spatial warp but not time shift')
-        else:
-            print('Alignment must be run before linearization.')
-            return
-    if config['shift'] is None:
-        raise RuntimeError('Found time shift but not spatial warp')
+    if (config['coe'] is None) or (config['shift'] is None):
+        print('Alignment must be run before linearization.')
+        return
 
     auto_key = f"{'test' if 'test' in which else 'linearization'}_auto_op_path"
 

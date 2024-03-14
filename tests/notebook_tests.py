@@ -23,7 +23,8 @@ v2v_nb.displays.ASSOCIATION_RADIUS_SQ = 0.25
 
 
 class ChoicesTest(unittest.TestCase):
-    def _test_widget(self, key: str, cls: Type, v_1: Any, v_2: Any):
+    def _test_widget(self, key: str, cls: Type, v_1: Any, v_2: Any,
+                     none_value: Any = ''):
         config = v2v_nb.get_config()
         config[key] = v_1
 
@@ -41,8 +42,40 @@ class ChoicesTest(unittest.TestCase):
         config[key] = v_1
         self.assertEqual(widget.value, v_1)
 
+        config[key] = None
+        self.assertEqual(widget.value, none_value)
+
+    def test_array_box(self):
+        config = v2v_nb.get_config()
+        config['test_array'] = None
+
+        widget = v2v_nb.ArrayBox('test_array')
+        self.assertEqual(widget.children[0].value, 'You should never see this')
+        self.assertTrue(config._nb_labels['test_array'] is widget.favorite)
+        for box in widget.favorite:
+            self.assertEqual(box.value, '')
+        self.assertEqual(widget.value, None)
+
+        config['test_array'] = np.ones((3, 3))
+        for box in widget.favorite:
+            self.assertEqual(float(box.value), 1.)
+        self.assertTrue(isinstance(widget.value, np.ndarray))
+        self.assertEqual(widget.value.shape, (3, 3))
+        self.assertTrue((widget.value == 1.).all())
+
+        config['test_array'] = None
+        for box in widget.favorite:
+            self.assertEqual(box.value, '')
+        self.assertEqual(widget.value, None)
+
+        config['test_array'] = np.ones((3, 3))
+        widget.children[1].children[1].click()
+        for box in widget.favorite:
+            self.assertEqual(box.value, '')
+        self.assertEqual(widget.value, None)
+
     def test_bool_box(self):
-        self._test_widget('test_bool', v2v_nb.BoolBox, True, False)
+        self._test_widget('test_bool', v2v_nb.BoolBox, True, False, False)
 
     def test_int_box(self):
         config = v2v_nb.get_config()
@@ -485,12 +518,9 @@ class ProcessingTest(unittest.TestCase):
             config['uv_aligned_path'] = temp_root
 
             config['coe'] = np.eye(3)
-            with self.assertRaises(RuntimeError):
+            with self.assert_prints('Found spatial warp but not'):
                 v2v_nb.build_and_run_alignment_pipeline()
-            config['coe'], config['shift'] = None, 0
-            with self.assertRaises(RuntimeError):
-                v2v_nb.build_and_run_alignment_pipeline()
-            config['coe'] = np.eye(3)
+            config['shift'] = 0
 
             with self.assert_prints('Pipeline complete'):
                 v2v_nb.build_and_run_alignment_pipeline()
@@ -713,10 +743,10 @@ class ProcessingTest(unittest.TestCase):
             v2v_nb.make_example_linearization_images(None)
 
         config['coe'] = np.eye(3)
-        with self.assertRaises(RuntimeError):
+        with self.assert_prints('Alignment must be run'):
             v2v_nb.make_example_linearization_images(None)
         config['shift'], config['coe'] = 0, None
-        with self.assertRaises(RuntimeError):
+        with self.assert_prints('Alignment must be run'):
             v2v_nb.make_example_linearization_images(None)
         config['coe'] = np.eye(3)
 
