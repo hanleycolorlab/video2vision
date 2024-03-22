@@ -201,14 +201,15 @@ class Loader(Operator):
         # variable _READ_WRITE_FROM_BUFFER is true.
         self.buff: Optional[np.ndarray] = None
 
-    def __iter__(self) -> Iterator[np.ndarray]:
+    def __iter__(self) \
+            -> Iterator[Tuple[np.ndarray, Optional[str], Optional[str]]]:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
         # loading from disk. This is used to apply Pipelines to images in
         # memory.
         if _READ_WRITE_FROM_TO_BUFFER:
             for image in self.buff:
                 self._check_size(image)
-                yield image, None
+                yield image, None, None
 
         else:
             # We arrange the buffer in order THWC instead of the usual order
@@ -236,14 +237,14 @@ class Loader(Operator):
                             frame, out=self.buff[self.t % self.batch_size]
                         )
                         self.t += 1
-                        yield frame, name
+                        yield frame, name, path
                         ret, frame = reader.read()
                 else:
                     # load handles rescaling for us
                     image = load(path, out=self.buff[self.t % self.batch_size])
                     self.t += 1
                     self._check_size(image)
-                    yield image, name
+                    yield image, name, path
 
     def __len__(self) -> int:
         if _READ_WRITE_FROM_TO_BUFFER:
@@ -281,12 +282,20 @@ class Loader(Operator):
             (self.batch_size, *self.expected_size[::-1], self.num_channels),
             dtype=np.float32
         )
-        names = []
+
+        # We return both names and paths because they serve different purposes.
+        # names is used to automatically construct the name of the output files
+        # when processing batches of stills. paths is used by downstream
+        # operators that need to go back and get metadata from the original
+        # file, most notably AutoTemporalAlign when using audio temporal
+        # alignment.
+        names, paths = [], []
 
         try:
             for _ in range(self.batch_size):
-                _, name = next(self._data_iter)
+                _, name, path = next(self._data_iter)
                 names.append(name)
+                paths.append(path)
         except StopIteration:
             if len(names) == 0:
                 raise OutOfInputs()
@@ -294,10 +303,11 @@ class Loader(Operator):
         n = self.t % self.batch_size
         self.buff = self.buff[:(n if (n > 0) else self.batch_size), :, :, :]
 
-        # final tracks whether this is the last batch to process
+        # final tracks whether this is the last batch to process.
         return {
             'image': np.moveaxis(self.buff, 0, 2),
             'names': names,
+            'paths': paths,
             'final': (self.t >= len(self)),
         }
 

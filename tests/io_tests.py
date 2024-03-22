@@ -116,8 +116,11 @@ class IOTest(unittest.TestCase):
             # Test with batch_size = 1
             out_1 = loader()
             self.assertTrue(isinstance(out_1, dict))
-            self.assertEqual(out_1.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out_1.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out_1['names'], ['1'])
+            self.assertEqual(out_1['paths'], [temp_path_1])
             self.assertEqual(out_1['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_1['image'].dtype, np.float32)
             self.assertTrue((out_1['image'] == 0).all())
@@ -125,8 +128,11 @@ class IOTest(unittest.TestCase):
 
             out_2 = loader()
             self.assertTrue(isinstance(out_2, dict))
-            self.assertEqual(out_2.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out_2.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out_2['names'], ['2'])
+            self.assertEqual(out_2['paths'], [temp_path_2])
             self.assertEqual(out_2['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_2['image'].dtype, np.float32)
             self.assertTrue((out_2['image'] == (255. / 256.)).all())
@@ -141,8 +147,11 @@ class IOTest(unittest.TestCase):
 
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out['names'], ['1', '2'])
+            self.assertEqual(out['paths'], [temp_path_1, temp_path_2])
             self.assertEqual(out['image'].shape, (16, 16, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
             self.assertTrue((out['image'][:, :, 0, :] == image_1).all())
@@ -156,8 +165,11 @@ class IOTest(unittest.TestCase):
             loader.set_path([temp_path_1, temp_path_2])
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out['names'], ['1', '2'])
+            self.assertEqual(out['paths'], [temp_path_1, temp_path_2])
             self.assertEqual(out['image'].shape, (16, 16, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
             self.assertTrue((out['image'][:, :, 0, :] == image_1).all())
@@ -254,8 +266,11 @@ class IOTest(unittest.TestCase):
             loader = v2v.Loader(temp_root, (256, 256), batch_size=2)
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out['names'], ['test', 'test'])
+            self.assertEqual(out['paths'], [path, path])
             self.assertEqual(out['image'].shape, (256, 256, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
             self.assertTrue(_is_close(out['image'], video[:, :, :2, :]))
@@ -263,8 +278,11 @@ class IOTest(unittest.TestCase):
 
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(
+                out.keys(), {'image', 'names', 'final', 'paths'}
+            )
             self.assertEqual(out['names'], ['test'])
+            self.assertEqual(out['paths'], [path])
             self.assertEqual(out['image'].shape, (256, 256, 1, 3))
             self.assertEqual(out['image'].dtype, np.float32)
             self.assertTrue(_is_close(out['image'], video[:, :, 2:, :]))

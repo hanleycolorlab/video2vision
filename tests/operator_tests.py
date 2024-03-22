@@ -32,8 +32,8 @@ class ConcatenateOnBandsTest(unittest.TestCase):
         image_2 = np.zeros((4, 5, 3), dtype=np.float32)
         image_2[..., 0], image_2[..., 1], image_2[..., 2] = 3, 4, 5
         cat_op = v2v.ConcatenateOnBands(bands=[[0, 1], [1, 2]])
-        dict_1 = {'image': image_1, 'dummy': 2, 'names': ['0']}
-        dict_2 = {'image': image_2, 'dummy': 2, 'names': ['1']}
+        dict_1 = {'image': image_1, 'dummy': 2, 'names': ['0'], 'paths': ['0']}
+        dict_2 = {'image': image_2, 'dummy': 2, 'names': ['1'], 'paths': ['1']}
         cat_dict = cat_op(dict_1, dict_2)
         self.assertTrue(isinstance(cat_dict, dict))
         self.assertEqual(cat_dict.keys(), {'image', 'dummy', 'names'})
