@@ -219,24 +219,6 @@ def detect_motion(image: Dict, area_threshold: float = 0.005,
     return np.array(motion)
 
 
-def _extract_background(image: Dict) -> Dict:
-    '''
-    Estimates the backgroud across time of a batch of images.
-    '''
-    # We're going to modify the values of the dictionary, so ensure it won't
-    # flow back upstream.
-    image = copy(_coerce_to_dict(image))
-
-    with _coerce_to_4dim(image):
-        # For small time dimensions, the median is less stable than the mean.
-        if image['image'].shape[2] >= 8:
-            image['image'] = np.median(image['image'], axis=2, keepdims=True)
-        else:
-            image['image'] = np.mean(image['image'], axis=2, keepdims=True)
-
-    return image
-
-
 def extract_audio_from_mp4(path: str, sample_rate_per_frame: int = 1) \
         -> np.ndarray:
     '''
@@ -279,6 +261,24 @@ def extract_audio_from_mp4(path: str, sample_rate_per_frame: int = 1) \
         _, audio = scipy.io.wavfile.read(wav_path)
 
     return audio
+
+
+def _extract_background(image: Dict) -> Dict:
+    '''
+    Estimates the backgroud across time of a batch of images.
+    '''
+    # We're going to modify the values of the dictionary, so ensure it won't
+    # flow back upstream.
+    image = copy(_coerce_to_dict(image))
+
+    with _coerce_to_4dim(image):
+        # For small time dimensions, the median is less stable than the mean.
+        if image['image'].shape[2] >= 8:
+            image['image'] = np.median(image['image'], axis=2, keepdims=True)
+        else:
+            image['image'] = np.mean(image['image'], axis=2, keepdims=True)
+
+    return image
 
 
 def extract_samples(image: np.ndarray, points: np.ndarray, width: int = 10) \
