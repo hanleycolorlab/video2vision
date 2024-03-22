@@ -1,17 +1,22 @@
 from contextlib import contextmanager
 from copy import copy
 import csv
-from math import exp, floor, isnan
+from math import exp, floor, isnan, log2
+import os
 from statistics import mean
+import subprocess
+import tempfile
 from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
+import scipy
 
 _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
-    'detect_motion', 'extract_samples', 'get_photoreceptor_template',
+    'detect_motion', 'extract_audio_from_mp4', 'extract_samples',
+    'get_photoreceptor_template', 'get_temporal_offset_from_audio',
     'locate_aruco_markers', 'read_jazirrad_file'
 ]
 
@@ -232,6 +237,50 @@ def _extract_background(image: Dict) -> Dict:
     return image
 
 
+def extract_audio_from_mp4(path: str, sample_rate_per_frame: int = 1) \
+        -> np.ndarray:
+    '''
+    Extracts the audio from an MP4 file on disk and returns it as a
+    :class:`numpy.ndarray`.
+
+    Args:
+        path (str): Path to the MP4 file.
+        sample_rate_per_frame (int): Audio is not stored at the same sample
+            rate as video - essentially, it has more "frames" than the video
+            has. The audio will be resampled to approximately this many audio
+            samples per video frame. The resampling is only approximate,
+            however.
+
+    Returns:
+        A 2-dimensional :class:`numpy.ndarray`, with the 0th dimension indexing
+        the time and the 1st dimension indexing the channel. There will
+        ordinarily be two channels.
+    '''
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    mp4_fps = cv2.VideoCapture(path).get(cv2.CAP_PROP_FPS)
+    ar = int(mp4_fps * sample_rate_per_frame)
+
+    with tempfile.TemporaryDirectory() as temp_root:
+        wav_path = os.path.join(temp_root, 'audio.wav')
+        # Flag meanings:
+        # ab: Audio bit rate
+        # ac: Number of audio channels
+        # ar: Audio out rate
+        proc = subprocess.run(
+            f'ffmpeg -i {path} -ab 160k -ac 2 -ar {ar} -vn {wav_path}',
+            shell=True,
+            capture_output=True,
+        )
+        if proc.returncode:
+            raise RuntimeError(proc.stderr.decode())
+
+        _, audio = scipy.io.wavfile.read(wav_path)
+
+    return audio
+
+
 def extract_samples(image: np.ndarray, points: np.ndarray, width: int = 10) \
         -> np.ndarray:
     '''
@@ -354,6 +403,28 @@ def get_photoreceptor_template(peak: float,
 
     sensitivity = alpha + beta
     return sensitivity / sensitivity.sum()
+
+
+def get_temporal_offset_from_audio(audio_1: np.ndarray, audio_2: np.ndarray) \
+        -> int:
+    '''
+    Given two single-channel streams of audio, estimates the offset between
+    them in time steps using cross-correlation.
+    '''
+    if {audio_1.ndim, audio_2.ndim} != {1}:
+        raise ValueError(
+            f'Received malformed arrays: {audio_1.shape}, {audio_2.shape}'
+        )
+
+    n_t = min(audio_1.shape[0], audio_2.shape[0])
+    n_t = 2 ** floor(log2(n_t))
+    audio_1, audio_2 = audio_1[:n_t], audio_2[:n_t]
+    corr = scipy.fft.ifft(
+        scipy.fft.fft(audio_1) * np.conj(scipy.fft.fft(audio_2))
+    )
+    max_corr = np.argmax(np.absolute(corr))
+
+    return (max_corr - n_t) if (max_corr > n_t // 2) else max_corr
 
 
 def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):

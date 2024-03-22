@@ -2,6 +2,7 @@ import os
 import unittest
 
 import numpy as np
+import scipy
 
 import video2vision as v2v
 
@@ -187,6 +188,16 @@ class UtilitiesTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             v2v.utils.get_photoreceptor_template(500, template='A3')
+
+    def test_get_temporal_offset_from_audio(self):
+        root = os.path.abspath(os.path.dirname(__file__))
+        wav_path = os.path.join(root, 'data/test.wav')
+        _, audio = scipy.io.wavfile.read(wav_path)
+
+        shift = v2v.utils.get_temporal_offset_from_audio(
+            audio[:-10, 0], audio[10:, 0]
+        )
+        self.assertTrue(shift == 10)
 
     def test_locate_aruco_markers_with_specified_markers(self):
         marker_pts = np.array([

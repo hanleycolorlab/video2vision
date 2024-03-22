@@ -715,6 +715,9 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
         if shift == 0:
             return source, control
 
+        # shifted will be shifted forward by abs(shift). The end will be
+        # trimmed off (and stashed for future use), and the beginning will be
+        # prepended to if there's a buffer from the last round.
         shifted, static = (source, control) if shift > 0 else (control, source)
         shift = abs(shift)
 
