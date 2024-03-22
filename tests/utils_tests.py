@@ -139,6 +139,26 @@ class UtilitiesTests(unittest.TestCase):
 
         self.assertTrue((out == should_be).all(), out)
 
+    def test_extract_background(self):
+        # Check 4-dim.
+        image = np.random.uniform(0, 1, (10, 10, 4, 3)).astype(np.float32)
+        mask = np.ones((10, 10), dtype=bool)
+        image = {'image': image, 'mask': mask}
+        out = v2v.utils._extract_background(image)
+        # Verify it's not the same dictionary
+        image['a'] = 1
+        self.assertEqual(out.keys(), {'image', 'mask'})
+        self.assertEqual(out['image'].shape, (10, 10, 1, 3))
+        should_be = np.mean(image['image'], axis=2, keepdims=True)
+        self.assertTrue((np.abs(out['image'] - should_be) < 1e-2).all())
+
+        # Check 3-dim.
+        image = np.random.uniform(0, 1, (10, 10, 3)).astype(np.float32)
+        image = {'image': image}
+        out = v2v.utils._extract_background(image)
+        self.assertEqual(out['image'].shape, (10, 10, 3))
+        self.assertTrue((np.abs(out['image'] - image['image']) < 1e-2).all())
+
     def test_extract_samples(self):
         # First, image. We choose the size of the image so we can test the
         # out-of-bounds handling.
@@ -274,26 +294,6 @@ class UtilitiesTests(unittest.TestCase):
         pred_markers = pred_markers.reshape(4, 4, 2)
         dist = np.sqrt(((pred_markers - marker_pts)**2).sum(2))
         self.assertTrue(dist.max() < 50)
-
-    def test_extract_background(self):
-        # Check 4-dim.
-        image = np.random.uniform(0, 1, (10, 10, 4, 3)).astype(np.float32)
-        mask = np.ones((10, 10), dtype=bool)
-        image = {'image': image, 'mask': mask}
-        out = v2v.utils._extract_background(image)
-        # Verify it's not the same dictionary
-        image['a'] = 1
-        self.assertEqual(out.keys(), {'image', 'mask'})
-        self.assertEqual(out['image'].shape, (10, 10, 1, 3))
-        should_be = np.mean(image['image'], axis=2, keepdims=True)
-        self.assertTrue((np.abs(out['image'] - should_be) < 1e-2).all())
-
-        # Check 3-dim.
-        image = np.random.uniform(0, 1, (10, 10, 3)).astype(np.float32)
-        image = {'image': image}
-        out = v2v.utils._extract_background(image)
-        self.assertEqual(out['image'].shape, (10, 10, 3))
-        self.assertTrue((np.abs(out['image'] - image['image']) < 1e-2).all())
 
     def test_prep_for_motion_detection(self):
         for n_c in [1, 2, 3]:
