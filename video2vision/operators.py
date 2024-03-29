@@ -197,9 +197,6 @@ class ConcatenateOnBands(Operator):
         rtn = {'image': [], 'names': []}
 
         for x, bands_from_image in zip(xs, self.bands):
-            # If paths is in there, delete it, because it will no longer be
-            # valid
-            x.pop('paths', None)
             image = x.pop('image')
             for band in bands_from_image:
                 if band >= image.shape[-1]:
@@ -216,6 +213,9 @@ class ConcatenateOnBands(Operator):
             # Combine names
             if 'names' in x:
                 rtn['names'].append(x.pop('names'))
+            # If paths is in there, delete it, because it will no longer be
+            # valid
+            x.pop('paths', None)
             # Append any other keys
             for k, v in x.items():
                 if k not in rtn:

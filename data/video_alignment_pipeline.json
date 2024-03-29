@@ -33,8 +33,10 @@
 			"class": "AutoTemporalAlign",
 			"time_shift_range": [-10, 10],
 			"mask": [50, 50, -50, -50],
+			"num_votes": 4,
 			"bands": [[0, 1, 2], []],
-			"method": "ecc"
+			"method": "ecc",
+			"use_audio": true
 		},
 		"edges": [[4, {"in_slot": 0}]]
 	}, {

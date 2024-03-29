@@ -22,8 +22,10 @@ from .utils import (
     _coerce_to_4dim,
     _evaluate_ecc_for_warp,
     detect_motion,
+    extract_audio_from_mp4,
     _extract_background,
     extract_samples,
+    get_temporal_offset_from_audio,
     locate_aruco_markers,
     _prep_for_motion_detection,
 )
@@ -465,7 +467,8 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
                  motion_difference_threshold: float = 0.1,
                  coe: Optional[np.ndarray] = None,
                  output_size: Optional[Tuple[int, int]] = None,
-                 time_shift: Optional[int] = None):
+                 time_shift: Optional[int] = None,
+                 use_audio: bool = False, audio_channel: int = 0):
         '''
         Args:
             time_shift_range (tuple of int): Range of temporal shifts to
@@ -491,8 +494,9 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             (left x, top y, right x, bottom y). This is only used by the ECC
             method.
 
-            method (str): Method to use. Choices: 'any' (defaults to ARUCO
-            markers if available), 'aruco', 'ecc'.
+            method (str): Method to use in calculating spatial alignment.
+            Choices: 'any' (defaults to ARUCO markers if available), 'aruco',
+            'ecc'.
 
             motion_area_threshold (float): The area_threshold value to use in
             the :func:`detect_motion` function.
@@ -517,12 +521,21 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             passed as an argument so that a fit
             :class:`video2vision.AutoTemporalAlign` can be saved to disk and
             reloaded.
+
+            use_audio (bool): If true, will use audio channel to perform
+            temporal alignment. If false, will perform spatial alignments for
+            every choice of time shift and choose the best based on the ECC
+            value.
+
+            audio_channel (int): Channel to use in extracting audio.
         '''
         super().__init__(
             max_iterations=max_iterations, eps=eps,
             sampling_mode=sampling_mode, mask=mask, num_votes=num_votes,
             bands=bands, method=method, coe=coe, output_size=output_size,
         )
+        self.use_audio = use_audio
+        self.audio_channel = audio_channel
         self.time_shift_range = time_shift_range
         self.time_shift = time_shift
         self.motion_area_threshold = motion_area_threshold
@@ -553,6 +566,10 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
                 control['image'] = control['image'][:, :, :nf, :]
 
             return super().apply(source, control)
+
+        # If we're using audio for temporal alignment, we don't need motion
+        if self.use_audio:
+            return self._find_alignment(source, control)
 
         # Check for motion prior to actually running the alignment
         if self.source_background is None:
@@ -618,8 +635,60 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
     def _find_alignment(self, source: Dict, control: Dict) -> Dict:
         '''
         This finds the spatial and temporal alignment between the source and
-        controls, and returns the aligned outputs. This assumes that adequate
-        motion is present in both.
+        controls, and returns the aligned outputs.
+        '''
+        if self.use_audio:
+            return self._find_alignment_with_audio(source, control)
+        else:
+            return self._find_alignment_with_ecc(source, control)
+
+    def _find_alignment_with_audio(self, source: Dict, control: Dict) -> Dict:
+        '''
+        This finds the spatial and temporal alignment between the source and
+        controls, and returns the aligned outputs, by using the
+        cross-correlation of the audio tracks to determine the temporal shift
+        and then using :class:AutoAlign` to find the spatial alignment.
+        '''
+        # This will raise a ValueError if there's more than one unique path in
+        # either source or control.
+        try:
+            source_path, = set(source['paths'])
+            control_path, = set(control['paths'])
+        except ValueError:
+            raise RuntimeError(
+                'Finding alignment with audio requires that both source and '
+                'control be drawn from a single file.'
+            )
+
+        source_audio = extract_audio_from_mp4(source_path, 128)
+        control_audio = extract_audio_from_mp4(control_path, 128)
+        shift = get_temporal_offset_from_audio(
+            control_audio[:, self.audio_channel],
+            source_audio[:, self.audio_channel],
+        )
+        shift = round(shift / 128)
+
+        if (
+            (shift >= self.time_shift_range[1]) or
+            (shift < self.time_shift_range[0])
+        ):
+            raise RuntimeError(
+                f'Temporal shift found by audio method out of range: {shift} '
+                f'not in range {self.time_shift_range}'
+            )
+
+        source, control = self._shift(source, control, shift)
+        self.time_shift = shift
+
+        return super()._find_alignment(source, control)
+
+    def _find_alignment_with_ecc(self, source: Dict, control: Dict) -> Dict:
+        '''
+        This finds the spatial and temporal alignment between the source and
+        controls, and returns the aligned outputs, by performing spatial
+        alignments for every possible time shift and looking for the best one
+        using ECC. This assumes that adequate motion is present in both source
+        and control.
         '''
         best_ecc = -float('inf')
 
@@ -750,9 +819,11 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
     def _to_json(self) -> Dict:
         rtn = super()._to_json()
         rtn.update({
+            'audio_channel': self.audio_channel,
             'motion_area_threshold': self.motion_area_threshold,
             'motion_difference_threshold': self.motion_difference_threshold,
             'time_shift_range': self.time_shift_range,
             'time_shift': self.time_shift,
+            'use_audio': self.use_audio,
         })
         return rtn

@@ -550,6 +550,26 @@ class AutoTemporalAlignTest(unittest.TestCase):
 
         align_op.release()
 
+    def test_aligning_with_audio(self):
+        align_op = v2v.AutoTemporalAlign(
+            (0, 2), bands=[[0, 1, 2], []], use_audio=True,
+        )
+
+        root = os.path.abspath(os.path.dirname(__file__))
+        uv_path = os.path.join(root, 'data/uv_test.mp4')
+        vis_path = os.path.join(root, 'data/vis_test.mp4')
+
+        pipe = v2v.Pipeline()
+        loader_idx_1 = pipe.add_operator(v2v.Loader(uv_path, (128, 128)))
+        loader_idx_2 = pipe.add_operator(v2v.Loader(vis_path, (128, 128)))
+        align_idx = pipe.add_operator(align_op)
+        pipe.add_edge(loader_idx_1, align_idx, in_slot=0)
+        pipe.add_edge(loader_idx_2, align_idx, in_slot=1)
+
+        pipe.run()
+
+        self.assertEqual(align_op.time_shift, -1)
+
     def test_without_time_shift(self):
         align_op = v2v.AutoTemporalAlign((0, 2), bands=[[0, 1, 2], []])
 
