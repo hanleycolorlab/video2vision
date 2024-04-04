@@ -155,15 +155,15 @@ class HistogramStretchTest(unittest.TestCase):
 
         # Now the harder case
         hist_op = v2v.HistogramStretch(2, apply_per_frame=False)
-        batch = np.linspace(0, 1, 200)
+        batch = np.linspace(0, 1, 200, dtype=np.float32)
         image_1 = batch[:100].reshape(10, 10, 1)
         image_2 = batch[100:].reshape(10, 10, 1)
         out = hist_op({'image': image_1, 'final': False})
         self.assertTrue(isinstance, v2v.operators.HoldToken)
         with self.assertRaises(v2v.ResetPipeline):
             hist_op({'image': image_2, 'final': True})
-        self.assertTrue(isclose(hist_op.floor, 0.017587939698492462))
-        self.assertTrue(isclose(hist_op.ceiling, 0.9824120603015076))
+        self.assertTrue(isclose(hist_op.floor, 0.017587939742952585))
+        self.assertTrue(isclose(hist_op.ceiling, 0.9824120700359344))
         out = hist_op({'image': np.linspace(0, 1, 100).reshape(10, 10, 1)})
         self.assertEqual(out.keys(), {'image'})
         self.assertEqual(out['image'].shape, (10, 10, 1))
