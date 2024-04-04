@@ -117,6 +117,9 @@ CONFIG_PROMPTS: Dict[str, Callable] = {
     'sense_converter_path': partial(
         choose_file_dialog, 'Select sense converter',
     ),
+    'save_align_pipe_path': partial(
+        save_file_dialog, 'Save alignment pipeline as',
+    ),
 }
 
 

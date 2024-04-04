@@ -342,6 +342,57 @@ class DisplayTest(unittest.TestCase):
             self.assertTrue((display_image[0, 3] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
 
+    def test_selector_box_make_crosshairs(self):
+        with self.with_images() as loader:
+            selector_box = v2v_nb.SelectorBox(
+                loader, output_size=(4, 4), marker_choice='box', w=4,
+            )
+            crosshair, shift = selector_box.make_crosshairs(4, 4)
+
+            self.assertEqual(crosshair.shape, (4, 4, 4))
+
+            should_be = np.array([
+                [255, 255, 255, 255],
+                [255,   0,   0, 255],
+                [255,   0,   0, 255],
+                [255, 255, 255, 255]
+            ], dtype=np.uint8)
+            zeros = np.zeros_like(should_be)
+            should_be = np.stack(
+                [zeros, should_be, zeros, should_be // 255], axis=2
+            )
+            self.assertTrue((crosshair == should_be).all())
+
+            self.assertEqual(shift.shape, (4, 4, 4))
+            should_be = np.array([
+                [255,   0,   0, 255],
+                [  0, 255, 255,   0],
+                [  0, 255, 255,   0],
+                [255,   0,   0, 255],
+            ], dtype=np.uint8)
+            should_be = np.stack(
+                [zeros, should_be, zeros, should_be // 255], axis=2
+            )
+            self.assertTrue((shift == should_be).all(), shift)
+
+            selector_box = v2v_nb.SelectorBox(
+                loader, output_size=(4, 4), marker_choice='cross', w=4,
+            )
+            crosshair, shift = selector_box.make_crosshairs(3, 3)
+
+            self.assertEqual(crosshair.shape, (3, 3, 4))
+            should_be = np.array([
+                [  0, 255,   0],
+                [255, 255, 255],
+                [  0, 255,   0],
+            ], dtype=np.uint8)
+            zeros = np.zeros_like(should_be)
+            should_be = np.stack(
+                [zeros, should_be, zeros, should_be // 255], axis=2
+            )
+            self.assertTrue((crosshair == should_be).all())
+            self.assertTrue(crosshair is shift)
+
     def test_selector_box_with_autolocator(self):
         # These were acquired manually.
         sample_pts_1 = np.array([
@@ -444,13 +495,14 @@ class ProcessingTest(unittest.TestCase):
         self.assertTrue(buff.getvalue().startswith(message), disp)
 
     @contextmanager
-    def with_image(self, as_loader: bool = True):
+    def with_image(self, as_loader: bool = True, w: int = 8):
+        r = w // 2
         with tempfile.TemporaryDirectory() as temp_root:
-            image = np.empty((8, 8, 3), dtype=np.uint8)
-            image[:4, :4, :] = 0
-            image[:4, 4:, :] = 64
-            image[4:, :4, :] = 128
-            image[4:, 4:, :] = 255
+            image = np.empty((w, w, 3), dtype=np.uint8)
+            image[:r, :r, :] = 0
+            image[:r, r:, :] = 64
+            image[r:, :r, :] = 128
+            image[r:, r:, :] = 255
 
             path = os.path.join(temp_root, 'image.png')
             Image.fromarray(image).save(path)
@@ -463,7 +515,7 @@ class ProcessingTest(unittest.TestCase):
                     writer.writerow([wl, 0, 2**(-0.75), 2**(-0.5), 1])
 
             if as_loader:
-                yield v2v.Loader(path, expected_size=(8, 8)), csv_path
+                yield v2v.Loader(path, expected_size=(w, w)), csv_path
             else:
                 yield path, csv_path
 
@@ -584,6 +636,90 @@ class ProcessingTest(unittest.TestCase):
 
             self.assertEqual(len(os.listdir(config['animal_out_path'])), 1)
             self.assertEqual(len(os.listdir(config['human_out_path'])), 1)
+
+    def test_build_and_save_alignment_pipeline(self):
+        v2v_nb.clear_all()
+        config = v2v_nb.get_config()
+
+        with self.assert_prints('Warp operator must be built'):
+            v2v_nb.build_and_save_alignment_pipeline(None)
+
+        coe = np.array([[0, -1, 4], [1, 0, 0], [0, 0, 1]])
+        warp_op = v2v.Warp(coe=coe, output_size=(8, 8))
+
+        with self.assert_prints('Please specify path to'):
+            v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            pipe_path = os.path.join(temp_root, 'pipe.json')
+            with open(pipe_path, 'w') as out_file:
+                out_file.write(' ')
+
+            config['save_align_pipe_path'] = pipe_path
+            with self.assert_prints('The alignment pipeline already exists'):
+                v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            pipe_path = os.path.join(temp_root, 'pipe.json')
+            config['save_align_pipe_path'] = pipe_path
+            config['build_video_pipeline'] = True
+            with self.assert_prints('Please specify path to visible'):
+                v2v_nb.build_and_save_alignment_pipeline(warp_op)
+            with self.with_image(as_loader=False) as (path, _):
+                config['vis_path'] = path
+                with self.assert_prints('Done!'):
+                    v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
+    def test_build_coarse_warp(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        with self.with_image(as_loader=False, w=32) as (path, _):
+            loader = v2v.Loader(path, expected_size=(32, 32))
+            uv_selector = v2v_nb.SelectorBox(loader, output_size=(16, 16))
+            vis_selector = v2v_nb.SelectorBox(loader, output_size=(16, 16))
+
+            with self.assert_prints('Please run both selectors'):
+                v2v_nb.build_coarse_warp(None, None)
+            with self.assert_prints('Please run both selectors'):
+                v2v_nb.build_coarse_warp(uv_selector, None)
+            with self.assert_prints('Please specify path to visible'):
+                v2v_nb.build_coarse_warp(vis_selector, uv_selector)
+            config['vis_path'] = path
+            uv_selector.crosshairs = [(0, 0)]
+            with self.assert_prints('You need to select the same number'):
+                v2v_nb.build_coarse_warp(vis_selector, uv_selector)
+            vis_selector.crosshairs = [(0, 0)]
+            with self.assert_prints('At least four tie points'):
+                v2v_nb.build_coarse_warp(vis_selector, uv_selector)
+
+            # This should be a 90 degree clockwise rotation
+            vis_selector.crosshairs = [(0, 0), (32, 0), (32, 32), (0, 32)]
+            uv_selector.crosshairs = [(0, 32), (0, 0), (32, 0), (32, 32)]
+            warp_op, display_image = v2v_nb.build_coarse_warp(
+                vis_selector, uv_selector
+            )
+
+            self.assertTrue(isinstance(warp_op, v2v.Warp))
+            rot_90 = np.array([
+                [0, -1, 32],
+                [1, 0, 0],
+                [0, 0, 1]
+            ])
+            self.assertTrue(np.isclose(warp_op.coe, rot_90).all())
+            self.assertEqual(warp_op.output_size, (32, 32))
+
+            display_image = np.array(display_image)
+            self.assertEqual(display_image.dtype, np.uint8)
+            self.assertEqual(display_image.shape, (16, 32, 3))
+            self.assertEqual(display_image[0, 0, 0], 0)
+            self.assertEqual(display_image[0, 15, 0], 64)
+            self.assertEqual(display_image[15, 0, 0], 128)
+            self.assertEqual(display_image[15, 15, 0], 255)
+            self.assertEqual(display_image[1, 17, 0], 128)
+            self.assertEqual(display_image[1, 30, 0], 0)
+            self.assertEqual(display_image[14, 17, 0], 255)
+            self.assertEqual(display_image[14, 30, 0], 64)
 
     def test_build_linearizer(self):
         config = v2v_nb.get_config()

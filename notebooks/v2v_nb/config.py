@@ -46,6 +46,9 @@ PARAM_TYPES: Dict[str, str] = {
     'shift': 'int',
     'coe': 'array',
     'batch_size': 'int',
+    # This is used in the alignment-pipeline-builder notebook
+    'save_align_pipe_path': 'path',
+    'build_video_pipeline': 'bool',
     # These are used in testing, not in operations
     'test_array': 'array',
     'test_bool': 'bool',
@@ -79,6 +82,9 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'coe': 'Alignment Warp',
     'linearization': 'Linearization',
     'sense_converter': 'Sense Converter',
+    # This is used in the alignment-pipeline-builder notebook
+    'save_align_pipe_path': 'Alignment Pipeline',
+    'build_video_pipeline': 'Build Video Pipeline?',
     # These are used in testing, not in operations
     'test_array': 'You should never see this',
     'test_bool': 'You should never see this',
@@ -303,8 +309,10 @@ class ParamNotSet(Exception):
 _config = Config()
 
 
-def get_config() -> Config:
+def get_config(clear: bool = False) -> Config:
     global _config
+    if clear:
+        clear_all()
     return _config
 
 

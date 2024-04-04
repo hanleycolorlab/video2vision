@@ -120,14 +120,14 @@ def _coerce_to_image(image: Any) -> np.ndarray:
     # Assume a 2-dimensional image is an image with a single band.
     if image.ndim == 2:
         image = image.reshape(*image.shape, 1)
+    if image.ndim not in {3, 4}:
+        raise ValueError(
+            f'Image must be 3- or 4-dimensional, not {image.shape}'
+        )
     # We do want to be able to support some uint dtypes for some operations
     # requiring very fast processing. But we never want to allow float64.
     if image.dtype == np.float64:
         image = image.astype(np.float32)
-    elif image.ndim not in {3, 4}:
-        raise ValueError(
-            f'Image must be 3- or 4-dimensional, not {image.shape}'
-        )
     return image
 
 

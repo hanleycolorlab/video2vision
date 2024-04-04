@@ -219,6 +219,7 @@ class SelectorBox(DisplayBox):
                  cache_path: Optional[str] = None,
                  copy_from: Optional['SelectorBox'] = None,
                  border_margin: int = 10,
+                 marker_choice: str = 'box',
                  output_size: Optional[Union[float, Tuple[int, int]]] = None):
         '''
         Args:
@@ -240,14 +241,20 @@ class SelectorBox(DisplayBox):
             the location of the crosshairs.
             copy_from (optional, :class:`SelectorBox`): If provided, copy the
             initial sample locations from this.
+            marker_choice (str): Choice of type of markers to place when
+            clicked. Options: 'box', 'cross'.
             output_size (optional, pair of int): If provided, the box will have
             this size display.
         '''
+        if marker_choice not in {'box', 'cross'}:
+            raise ValueError(marker_choice)
+
         self.align_pipeline = align_pipeline
         self.font_color = font_color or box_color
         self.box_color = np.array(box_color)
         self.border_margin = border_margin
         self.sample_size = w
+        self.marker_choice = marker_choice
 
         # These will store the current crosshairs:
         # idxs (List[int]): Numerical indices of the crosshairs.
@@ -409,16 +416,36 @@ class SelectorBox(DisplayBox):
         r_w, r_h = max(1, w // 25), max(1, h // 25)
         box_color = np.concatenate((self.box_color, (1,)))
 
-        crosshair_image = np.zeros((h, w, 4), dtype=np.uint8)
-        crosshair_image[:r_h, :, :] = crosshair_image[-r_h:, :, :] = box_color
-        crosshair_image[:, :r_w, :] = crosshair_image[:, -r_w:, :] = box_color
+        if self.marker_choice == 'box':
+            crosshair_image = np.zeros((h, w, 4), dtype=np.uint8)
+            crosshair_image[:r_h, :, :] = box_color
+            crosshair_image[-r_h:, :, :] = box_color
+            crosshair_image[:, :r_w, :] = box_color
+            crosshair_image[:, -r_w:, :] = box_color
 
-        shift_image = np.zeros((h, w, 4), dtype=np.uint8)
-        shift_image = Image.fromarray(shift_image)
-        draw = ImageDraw.Draw(shift_image)
-        draw.line((0, 0, w, h), fill=tuple(box_color))
-        draw.line((0, h, w, 0), fill=tuple(box_color))
-        shift_image = np.array(shift_image)
+            shift_image = np.zeros((h, w, 4), dtype=np.uint8)
+            if h >= w:
+                ys = np.arange(h, dtype=np.int64)
+                xs = ((w / h) * ys).astype(np.int64)
+                ys = np.concatenate([ys] * r_h)
+                xs = (xs.reshape(-1, 1) + np.arange(r_h, dtype=np.int64))
+                xs = xs.flatten()
+            else:
+                xs = np.arange(w, dtype=np.int64)
+                ys = ((h / w) * xs).astype(np.int64)
+                xs = np.concatenate([xs] * r_w)
+                ys = (ys.reshape(-1, 1) + np.arange(r_w, dtype=np.int64))
+                ys = ys.flatten()
+            shift_image[ys, xs] = shift_image[ys, w - xs - 1] = box_color
+
+        elif self.marker_choice == 'cross':
+            crosshair_image = np.zeros((h, w, 4), dtype=np.uint8)
+            crosshair_image[(h - r_h) // 2:(h + r_h) // 2, :, :] = box_color
+            crosshair_image[:, (w - r_w) // 2:(w + r_w) // 2, :] = box_color
+            shift_image = crosshair_image
+
+        else:
+            raise ValueError(self.marker_choice)
 
         return crosshair_image, shift_image
 

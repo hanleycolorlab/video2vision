@@ -2,6 +2,7 @@ import json
 import os
 from typing import Optional, Tuple
 
+import cv2
 import numpy as np
 from PIL import Image
 from tabulate import tabulate
@@ -24,8 +25,9 @@ from .utils import (
 
 
 __all__ = [
-    'build_and_run_alignment_pipeline', 'build_and_run_full_pipeline',
-    'build_linearizer', 'evaluate_conversion', 'evaluate_samples',
+    'build_and_run_alignment_pipeline', 'build_and_save_alignment_pipeline',
+    'build_and_run_full_pipeline', 'build_linearizer', 'build_coarse_warp',
+    'evaluate_conversion', 'evaluate_samples',
     'make_example_linearization_images', 'make_final_displaybox',
     'make_ghostbox', 'make_initial_displaybox', 'make_selectorbox',
 ]
@@ -99,6 +101,54 @@ def build_and_run_alignment_pipeline():
         config['shift'] = 0
 
 
+def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
+    '''
+    Builds an alignment pipeline from a coarse :class:`video2vision.Warp`
+    operator and saves to disk.
+    '''
+    config = get_config()
+
+    if warp_op is None:
+        print('Warp operator must be built first.')
+        return
+    if config['save_align_pipe_path'] is None:
+        print('Please specify path to write alignment pipeline to.')
+        return
+    if os.path.exists(config['save_align_pipe_path']):
+        print(
+            'The alignment pipeline already exists. Cowardly refusing to '
+            'overwrite it.'
+        )
+        return
+    if config['vis_path'] is None:
+        print('Please specify path to visible image.')
+        return
+
+    if config['build_video_pipeline']:
+        align_op = v2v.AutoTemporalAlign(
+            time_shift_range=[-10, 10], bands=[[0, 1, 2], []]
+        )
+        write_op = v2v.Writer(extension='mp4')
+    else:
+        align_op = v2v.AutoAlign(num_votes=4, bands=[[0, 1, 2], []])
+        write_op = v2v.Writer(extension='png')
+
+    pipe = v2v.Pipeline()
+    uv_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+    vis_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+    coarse_align_idx = pipe.add_operator(warp_op)
+    fine_align_idx = pipe.add_operator(align_op)
+    write_idx = pipe.add_operator(write_op)
+
+    pipe.add_edge(uv_loader_idx, coarse_align_idx, in_slot=0)
+    pipe.add_edge(coarse_align_idx, fine_align_idx, in_slot=0)
+    pipe.add_edge(vis_loader_idx, fine_align_idx, in_slot=1)
+    pipe.add_edge(fine_align_idx, write_idx, in_slot=0)
+    pipe.save(config['save_align_pipe_path'])
+
+    print('Done! You can close the notebook.')
+
+
 def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     config = get_config()
 
@@ -165,6 +215,58 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
 
     full_pipe.run()
     print('Pipeline complete')
+
+
+def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
+    '''
+    This function is used in the alignment pipeline builder notebook. Given a
+    pair of :class:`SelectorBox`, we construct the coarse warp operation and
+    generate an example coarsely-aligned image, returning both.
+    '''
+    config = get_config()
+
+    if (vis_selector is None) or (uv_selector is None):
+        print(
+            'Please run both selectors and choose tie points before building '
+            'the warp.'
+        )
+        return
+    if config['vis_path'] is None:
+        print('Please specify path to visible image.')
+        return
+
+    n_uv_crosshairs = len(uv_selector.crosshairs)
+    n_vis_crosshairs = len(vis_selector.crosshairs)
+
+    if n_uv_crosshairs != n_vis_crosshairs:
+        print('You need to select the same number of samples in each image.')
+        return
+    if n_uv_crosshairs < 4:
+        print('At least four tie points must be selected in each image.')
+        return
+
+    warp_op = v2v.Warp.build_from_tiepoints(
+        uv_selector.crosshairs,
+        vis_selector.crosshairs,
+        config.image_size,
+    )
+
+    # The _original_image is in uint8, so will need to be rescaled prior to and
+    # after the warp.
+    uv_image = uv_selector._original_image.astype(np.float32) / 256.
+    warped_uv_image = warp_op({'image': uv_image})['image']
+    warped_uv_image = np.clip(256 * warped_uv_image, 0, 255).astype(np.uint8)
+    # Now resize down to match vis_image
+    if (uv_selector.h, uv_selector.w) != warped_uv_image.shape[:2]:
+        warped_uv_image = cv2.resize(
+            warped_uv_image, (uv_selector.w, uv_selector.h)
+        )
+
+    display_image = np.concatenate(
+        (vis_selector._cached_image, warped_uv_image), axis=1
+    )
+
+    return warp_op, Image.fromarray(display_image)
 
 
 def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
@@ -460,40 +562,46 @@ def make_initial_displaybox() -> DisplayBox:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
 
 
-def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None) \
-        -> SelectorBox:
+def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
+                     require_alignment: bool = True,
+                     marker_choice: str = 'box') -> SelectorBox:
     config = get_config()
 
-    if config['align_pipe_path'] is None:
-        print(f"Please specify {PARAM_CAPTIONS['align_pipe_path'].lower()}")
-        return
-    if (config['coe'] is None) or (config['shift'] is None):
-        print('Alignment must be run before linearization.')
-        return
-
-    auto_key = f"{'test' if 'test' in which else 'linearization'}_auto_op_path"
-
-    if which.startswith('uv_'):
-        align_pipe = v2v.load_pipeline(config['align_pipe_path'])
-
-        align_idx, = (
-            i for i in align_pipe.nodes
-            if isinstance(align_pipe.nodes[i]['operator'], v2v.AutoAlign)
-        )
-        align_op = align_pipe.nodes[align_idx]['operator']
-        align_op.coe = config['coe']
-        align_op.output_size = config.image_size
-        if isinstance(align_op, v2v.AutoTemporalAlign):
-            align_op.shift = config['shift']
-
-    else:
-        align_pipe = None
+    align_pipe = auto_op = None
+    shift = 0
 
     try:
+        if require_alignment:
+            if config['align_pipe_path'] is None:
+                raise ParamNotSet('align_pipe_path')
+            if (config['coe'] is None) or (config['shift'] is None):
+                print('Alignment must be run before linearization.')
+                return
+
+            shift = get_shift(which)
+
+            auto_key = f"{which.split('_')[1]}_auto_op_path"
+            auto_op = config[auto_key]
+
+            if which.startswith('uv_'):
+                align_pipe = v2v.load_pipeline(config['align_pipe_path'])
+
+                align_idx, = (
+                    i for i in align_pipe.nodes
+                    if isinstance(align_pipe.nodes[i]['operator'],
+                                  v2v.AutoAlign)
+                )
+                align_op = align_pipe.nodes[align_idx]['operator']
+                align_op.coe = config['coe']
+                align_op.output_size = config.image_size
+                if isinstance(align_op, v2v.AutoTemporalAlign):
+                    align_op.shift = config['shift']
+
         return SelectorBox(
-            get_loader(which), get_shift(which), 50, box_color=(0, 255, 255),
-            auto_op=config[auto_key], cache_path=get_cache_path(which),
+            get_loader(which), shift, 50, box_color=(0, 255, 255),
+            auto_op=auto_op, cache_path=get_cache_path(which),
             output_size=0.10, copy_from=copy_from, align_pipeline=align_pipe,
+            marker_choice=marker_choice,
         )
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
