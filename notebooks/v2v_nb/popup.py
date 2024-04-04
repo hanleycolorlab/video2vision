@@ -120,6 +120,9 @@ CONFIG_PROMPTS: Dict[str, Callable] = {
     'save_align_pipe_path': partial(
         save_file_dialog, 'Save alignment pipeline as',
     ),
+    'save_auto_op_path': partial(
+        save_file_dialog, 'Save autolinearizer as',
+    ),
 }
 
 

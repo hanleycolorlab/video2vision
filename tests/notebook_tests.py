@@ -670,6 +670,74 @@ class ProcessingTest(unittest.TestCase):
                 with self.assert_prints('Done!'):
                     v2v_nb.build_and_save_alignment_pipeline(warp_op)
 
+    def test_build_and_save_autolinearizer(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        with self.with_image(w=11) as (loader, _):
+            corners = np.array([
+                [[0, 0], [1, 0], [1, 1], [0, 1]],
+                [[10, 0], [11, 0], [11, 1], [10, 1]],
+                [[0, 10], [1, 10], [1, 11], [0, 11]],
+                [[10, 10], [11, 10], [11, 11], [10, 11]]
+            ])
+            t = 0
+            selector = v2v_nb.SelectorBox(loader, w=1)
+
+            with self.assert_prints('Please run ARUCO marker'):
+                v2v_nb.build_and_save_autolinearizer(None, None, None)
+            with self.assertRaises(RuntimeError):
+                v2v_nb.build_and_save_autolinearizer(corners, None, None)
+            with self.assertRaises(RuntimeError):
+                v2v_nb.build_and_save_autolinearizer(corners[:1], t, None)
+            with self.assert_prints('Please select sample locations'):
+                v2v_nb.build_and_save_autolinearizer(corners, t, None)
+            with self.assert_prints('Please specify'):
+                v2v_nb.build_and_save_autolinearizer(corners, t, selector)
+
+            with tempfile.TemporaryDirectory() as temp_root:
+                camera_path = os.path.join(temp_root, 'camera.csv')
+                config['camera_path'] = camera_path
+                s = 1. / 401
+                with open(camera_path, 'w') as out_file:
+                    writer = csv.writer(out_file)
+                    writer.writerow(['wl', 'U', 'B', 'G', 'R'])
+                    for wl in range(300, 701):
+                        writer.writerow([wl, s, s, s, s])
+
+                val_path = os.path.join(temp_root, 'values.csv')
+                config['linearization_values_path'] = val_path
+                with open(val_path, 'w') as out_file:
+                    writer = csv.writer(out_file)
+                    writer.writerow(['wl', 'A', 'B', 'C', 'D'])
+                    for wl in range(300, 701):
+                        writer.writerow([wl, 1, 1, 1, 1])
+
+                config['save_auto_op_path'] = val_path
+                with self.assert_prints('Autolinearizer already exists'):
+                    v2v_nb.build_and_save_autolinearizer(corners, t, selector)
+
+                auto_op_path = os.path.join(temp_root, 'autolinearizer.json')
+                config['save_auto_op_path'] = auto_op_path
+                selector.crosshairs = [(2, 2), (8, 2), (8, 8)]
+                with self.assert_prints('Selected 3 but have values for 4'):
+                    v2v_nb.build_and_save_autolinearizer(corners, t, selector)
+
+                selector.crosshairs = [(2, 2), (8, 2), (8, 8), (2, 8)]
+                with self.assert_prints('Done!'):
+                    v2v_nb.build_and_save_autolinearizer(corners, t, selector)
+
+                self.assertTrue(os.path.exists(auto_op_path))
+                autoline_op = v2v_nb.utils.load_operator(auto_op_path)
+
+        self.assertEqual(autoline_op.marker_ids.tolist(), [0, 1, 2, 3])
+        self.assertTrue(np.isclose(autoline_op.marker_points, corners).all())
+        sample_points = np.array(selector.crosshairs)
+        self.assertTrue(
+            np.isclose(autoline_op.sample_points, sample_points).all()
+        )
+        self.assertTrue(np.isclose(autoline_op.expected_values, 1).all())
+
     def test_build_coarse_warp(self):
         config = v2v_nb.get_config()
         v2v_nb.clear_all()
@@ -857,6 +925,36 @@ class ProcessingTest(unittest.TestCase):
             v2v_nb.evaluate_samples(
                 line_op, values_path, selector_box, selector_box,
             )
+
+    def test_find_and_draw_aruco_markers(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        with self.assert_prints('Please specify '):
+            v2v_nb.find_and_draw_aruco_markers()
+
+        root_path = os.path.abspath(os.path.dirname(__file__))
+        config['vis_path'] = os.path.join(root_path, 'data/vis_sample.jpg')
+        with self.assert_prints('Failed to locate markers.'):
+            v2v_nb.find_and_draw_aruco_markers()
+
+        v2v_nb.clear_all()
+
+        config['vis_path'] = os.path.join(
+            root_path, 'data/marker_sample_1.jpg'
+        )
+
+        corners, t, image = v2v_nb.find_and_draw_aruco_markers()
+
+        marker_pts = np.array([
+            [[3141., 2440.], [3069., 2434.], [3072., 2364.], [3144., 2371.]],
+            [[1514., 2307.], [1455., 2303.], [1459., 2242.], [1519., 2245.]],
+            [[1538., 1384.], [1483., 1384.], [1482., 1322.], [1535., 1323.]],
+            [[3153., 1384.], [3080., 1384.], [3081., 1310.], [3154., 1310.]],
+        ])
+        self.assertEqual(t, 0)
+        dist = np.sqrt(((corners - marker_pts)**2).sum(2))
+        self.assertTrue(dist.max() < 50)
 
     def test_make_example_linearization_images(self):
         config = v2v_nb.get_config()

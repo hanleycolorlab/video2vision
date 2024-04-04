@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from tabulate import tabulate
 
 import video2vision as v2v
@@ -25,9 +25,10 @@ from .utils import (
 
 
 __all__ = [
-    'build_and_run_alignment_pipeline', 'build_and_save_alignment_pipeline',
-    'build_and_run_full_pipeline', 'build_linearizer', 'build_coarse_warp',
-    'evaluate_conversion', 'evaluate_samples',
+    'build_and_run_alignment_pipeline', 'build_and_run_full_pipeline',
+    'build_and_save_alignment_pipeline', 'build_and_save_autolinearizer',
+    'build_linearizer', 'build_coarse_warp', 'evaluate_conversion',
+    'evaluate_samples', 'find_and_draw_aruco_markers',
     'make_example_linearization_images', 'make_final_displaybox',
     'make_ghostbox', 'make_initial_displaybox', 'make_selectorbox',
 ]
@@ -101,54 +102,6 @@ def build_and_run_alignment_pipeline():
         config['shift'] = 0
 
 
-def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
-    '''
-    Builds an alignment pipeline from a coarse :class:`video2vision.Warp`
-    operator and saves to disk.
-    '''
-    config = get_config()
-
-    if warp_op is None:
-        print('Warp operator must be built first.')
-        return
-    if config['save_align_pipe_path'] is None:
-        print('Please specify path to write alignment pipeline to.')
-        return
-    if os.path.exists(config['save_align_pipe_path']):
-        print(
-            'The alignment pipeline already exists. Cowardly refusing to '
-            'overwrite it.'
-        )
-        return
-    if config['vis_path'] is None:
-        print('Please specify path to visible image.')
-        return
-
-    if config['build_video_pipeline']:
-        align_op = v2v.AutoTemporalAlign(
-            time_shift_range=[-10, 10], bands=[[0, 1, 2], []]
-        )
-        write_op = v2v.Writer(extension='mp4')
-    else:
-        align_op = v2v.AutoAlign(num_votes=4, bands=[[0, 1, 2], []])
-        write_op = v2v.Writer(extension='png')
-
-    pipe = v2v.Pipeline()
-    uv_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
-    vis_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
-    coarse_align_idx = pipe.add_operator(warp_op)
-    fine_align_idx = pipe.add_operator(align_op)
-    write_idx = pipe.add_operator(write_op)
-
-    pipe.add_edge(uv_loader_idx, coarse_align_idx, in_slot=0)
-    pipe.add_edge(coarse_align_idx, fine_align_idx, in_slot=0)
-    pipe.add_edge(vis_loader_idx, fine_align_idx, in_slot=1)
-    pipe.add_edge(fine_align_idx, write_idx, in_slot=0)
-    pipe.save(config['save_align_pipe_path'])
-
-    print('Done! You can close the notebook.')
-
-
 def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     config = get_config()
 
@@ -215,6 +168,100 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
 
     full_pipe.run()
     print('Pipeline complete')
+
+
+def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
+    '''
+    Builds an alignment pipeline from a coarse :class:`video2vision.Warp`
+    operator and saves to disk.
+    '''
+    config = get_config()
+
+    if warp_op is None:
+        print('Warp operator must be built first.')
+        return
+    if config['save_align_pipe_path'] is None:
+        print('Please specify path to write alignment pipeline to.')
+        return
+    if os.path.exists(config['save_align_pipe_path']):
+        print(
+            'The alignment pipeline already exists. Cowardly refusing to '
+            'overwrite it.'
+        )
+        return
+    if config['vis_path'] is None:
+        print('Please specify path to visible image.')
+        return
+
+    if config['build_video_pipeline']:
+        align_op = v2v.AutoTemporalAlign(
+            time_shift_range=[-10, 10], bands=[[0, 1, 2], []]
+        )
+        write_op = v2v.Writer(extension='mp4')
+    else:
+        align_op = v2v.AutoAlign(num_votes=4, bands=[[0, 1, 2], []])
+        write_op = v2v.Writer(extension='png')
+
+    pipe = v2v.Pipeline()
+    uv_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+    vis_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+    coarse_align_idx = pipe.add_operator(warp_op)
+    fine_align_idx = pipe.add_operator(align_op)
+    write_idx = pipe.add_operator(write_op)
+
+    pipe.add_edge(uv_loader_idx, coarse_align_idx, in_slot=0)
+    pipe.add_edge(coarse_align_idx, fine_align_idx, in_slot=0)
+    pipe.add_edge(vis_loader_idx, fine_align_idx, in_slot=1)
+    pipe.add_edge(fine_align_idx, write_idx, in_slot=0)
+    pipe.save(config['save_align_pipe_path'])
+
+    print('Done! You can close the notebook.')
+
+
+def build_and_save_autolinearizer(corners: np.ndarray, t: int,
+                                  selector: SelectorBox):
+    config = get_config()
+
+    if (corners is None) != (t is None):
+        raise RuntimeError(f'Received corners: {corners}, t: {t}')
+    if corners is None:
+        print('Please run ARUCO marker locator first.')
+        return
+    if corners.shape != (4, 4, 2):
+        raise RuntimeError(f'Malformed corners: {corners}')
+    if selector is None:
+        print('Please select sample locations first.')
+        return
+    for k in ['camera_path', 'linearization_values_path', 'save_auto_op_path']:
+        if config[k] is None:
+            print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
+            return
+    if os.path.exists(config['save_auto_op_path']):
+        print('Autolinearizer already exists. Cowardly refusing to overwrite.')
+        return
+
+    sample_ref = load_csv(config['linearization_values_path'])
+    if len(selector.crosshairs) != sample_ref.shape[1]:
+        print(
+            f'Selected {len(selector.crosshairs)} but have values for '
+            f'{sample_ref.shape[1]} samples; the numbers must match.'
+        )
+        return
+
+    camera_sense = load_csv(config['camera_path'])
+    pred_qc = sample_ref.T.dot(camera_sense)
+
+    autoline_op = v2v.AutoLinearize(
+        marker_ids=[0, 1, 2, 3],
+        marker_points=corners,
+        sample_points=selector.crosshairs,
+        expected_values=pred_qc,
+    )
+
+    with open(config['save_auto_op_path'], 'w') as out_file:
+        json.dump(autoline_op._to_json(), out_file)
+
+    print('Done! You can close the notebook.')
 
 
 def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
@@ -447,6 +494,48 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
     table = tabulate(table, headers=['Color', 'MAE', 'R2', 'SNR'])
 
     return expected_values, linearized_values, samples, table
+
+
+def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
+    try:
+        loader = get_loader('vis_path')
+    except ParamNotSet as err:
+        print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
+        return
+
+    for t in range(len(loader)):
+        frame = loader.get_frame(t, noscale=True)
+
+        try:
+            # NOTE: locate_aruco_markers is capable of batch processing, but
+            # it's not worth the extra runtime loading from disk.
+            _, corners = v2v.utils.locate_aruco_markers(frame, [0, 1, 2, 3])
+        except RuntimeError:
+            continue
+        else:
+            break
+    else:
+        print('Failed to locate markers. Please check input image.')
+        return
+
+    corners = corners.squeeze(0)
+
+    if corners.shape[0] != 4:
+        print(
+            f'Found {corners.shape[0]} markers, expected 4. Please check '
+            f'input image.'
+        )
+        return
+
+    image = Image.fromarray(frame)
+    draw = ImageDraw.Draw(image)
+
+    for box in corners:
+        for (x1, y1), (x2, y2) in zip(box[:-1], box[1:]):
+            draw.line((x1, y1, x2, y2), fill=(0, 255, 0), width=4)
+        draw.line((*box[-1], *box[0]), fill=(0, 255, 0), width=4)
+
+    return corners, t, image
 
 
 def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \

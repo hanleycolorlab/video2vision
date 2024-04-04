@@ -49,6 +49,8 @@ PARAM_TYPES: Dict[str, str] = {
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'path',
     'build_video_pipeline': 'bool',
+    # This is used in the autolinearizer-builder notebook
+    'save_auto_op_path': 'path',
     # These are used in testing, not in operations
     'test_array': 'array',
     'test_bool': 'bool',
@@ -85,6 +87,8 @@ PARAM_CAPTIONS: Dict[str, str] = {
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'Alignment Pipeline',
     'build_video_pipeline': 'Build Video Pipeline?',
+    # This is used in the autolinearizer-builder notebook
+    'save_auto_op_path': 'Autolinearizer Path',
     # These are used in testing, not in operations
     'test_array': 'You should never see this',
     'test_bool': 'You should never see this',
