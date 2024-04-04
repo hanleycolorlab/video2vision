@@ -212,7 +212,7 @@ class Loader(Operator):
         # variable _READ_WRITE_FROM_BUFFER is true.
         self.buff: Optional[np.ndarray] = None
 
-    def __iter__(self) -> Iterator[np.ndarray]:
+    def __iter__(self) -> Iterator[Tuple[np.ndarray, Optional[str]]]:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
         # loading from disk. This is used to apply Pipelines to images in
         # memory.
