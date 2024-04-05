@@ -18,7 +18,7 @@ def choose_directory_dialog(prompt: Optional[str] = None):
     out = None
 
     while not out:
-        out = filedialog.askdirectory(title='video2vision', message=prompt)
+        out = filedialog.askdirectory(title=prompt)
 
     return out
 
@@ -33,7 +33,7 @@ def choose_file_dialog(prompt: Optional[str] = None, plural: bool = False):
     '''
     Tk().withdraw()
     ask = filedialog.askopenfilenames if plural else filedialog.askopenfilename
-    return ask(title='video2vision', message=prompt)
+    return ask(title=prompt)
 
 
 def save_file_dialog(prompt: Optional[str] = None) -> str:
@@ -44,9 +44,7 @@ def save_file_dialog(prompt: Optional[str] = None) -> str:
     out = None
 
     while not out:
-        out = filedialog.asksaveasfilename(
-            title='video2vision', message=prompt
-        )
+        out = filedialog.asksaveasfilename(title=prompt)
 
     return out
 
