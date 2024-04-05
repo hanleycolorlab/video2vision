@@ -4,7 +4,7 @@ import io
 import os
 import sys
 import tempfile
-from typing import Any, Optional, Type
+from typing import Any, Optional, Type, Union
 import unittest
 
 import numpy as np
@@ -20,6 +20,21 @@ import v2v_nb  # noqa
 
 
 v2v_nb.displays.ASSOCIATION_RADIUS_SQ = 0.25
+
+
+def _create_dummy_csv(path: str, value: Union[np.ndarray, float]):
+    if isinstance(value, (float, int)):
+        value = np.full((401, 4), value)
+    if not isinstance(value, np.ndarray):
+        value = np.array(value)
+    if value.ndim == 1:
+        value = np.stack([value] * 401, axis=0)
+
+    with open(path, 'w') as out_file:
+        writer = csv.writer(out_file)
+        writer.writerow(['wl'] + [str(i) for i in range(value.shape[1])])
+        for i in range(401):
+            writer.writerow([i + 300] + value[i].tolist())
 
 
 class ChoicesTest(unittest.TestCase):
@@ -508,11 +523,7 @@ class ProcessingTest(unittest.TestCase):
             Image.fromarray(image).save(path)
 
             csv_path = os.path.join(temp_root, 'values.csv')
-            with open(csv_path, 'w') as values_file:
-                writer = csv.writer(values_file)
-                writer.writerow(['wl', '0', '1', '2', '3'])
-                for wl in range(300, 701):
-                    writer.writerow([wl, 0, 2**(-0.75), 2**(-0.5), 1])
+            _create_dummy_csv(csv_path, [0, 2**(-0.75), 2**(-0.5), 1])
 
             if as_loader:
                 yield v2v.Loader(path, expected_size=(w, w)), csv_path
@@ -696,24 +707,15 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.build_and_save_autolinearizer(corners, t, selector)
 
             with tempfile.TemporaryDirectory() as temp_root:
-                camera_path = os.path.join(temp_root, 'camera.csv')
-                config['camera_path'] = camera_path
-                s = 1. / 401
-                with open(camera_path, 'w') as out_file:
-                    writer = csv.writer(out_file)
-                    writer.writerow(['wl', 'U', 'B', 'G', 'R'])
-                    for wl in range(300, 701):
-                        writer.writerow([wl, s, s, s, s])
+                config['camera_path'] = os.path.join(temp_root, 'camera.csv')
+                _create_dummy_csv(config['camera_path'], 1. / 401)
 
-                val_path = os.path.join(temp_root, 'values.csv')
-                config['linearization_values_path'] = val_path
-                with open(val_path, 'w') as out_file:
-                    writer = csv.writer(out_file)
-                    writer.writerow(['wl', 'A', 'B', 'C', 'D'])
-                    for wl in range(300, 701):
-                        writer.writerow([wl, 1, 1, 1, 1])
+                config['linearization_values_path'] = os.path.join(
+                    temp_root, 'values.csv'
+                )
+                _create_dummy_csv(config['linearization_values_path'], 1)
 
-                config['save_auto_op_path'] = val_path
+                config['save_auto_op_path'] = config['camera_path']
                 with self.assert_prints('Autolinearizer already exists'):
                     v2v_nb.build_and_save_autolinearizer(corners, t, selector)
 
@@ -737,6 +739,59 @@ class ProcessingTest(unittest.TestCase):
             np.isclose(autoline_op.sample_points, sample_points).all()
         )
         self.assertTrue(np.isclose(autoline_op.expected_values, 1).all())
+
+    def test_build_and_save_sense_converter(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            config['camera_path'] = os.path.join(temp_root, 'camera.csv')
+            config['animal_sensitivity_path'] = os.path.join(
+                temp_root, 'animals.csv'
+            )
+            config['reflectivity_path'] = os.path.join(temp_root, 'ref.csv')
+            config['save_converter_path'] = os.path.join(
+                temp_root, 'conv.json'
+            )
+            for k in [
+                'camera_path', 'animal_sensitivity_path', 'reflectivity_path',
+                'save_converter_path'
+            ]:
+                temp, config[k] = config[k], None
+                with self.assert_prints('Please specify'):
+                    v2v_nb.build_and_save_sense_converter()
+                config[k] = temp
+
+            with open(config['save_converter_path'], 'w') as out_file:
+                out_file.write(' ')
+            with self.assert_prints('Converter already exists'):
+                v2v_nb.build_and_save_sense_converter()
+            os.remove(config['save_converter_path'])
+
+            _create_dummy_csv(config['camera_path'], 1)
+            _create_dummy_csv(config['animal_sensitivity_path'], 1)
+            ref = np.random.uniform(0, 1, (401, 20))
+            _create_dummy_csv(config['reflectivity_path'], ref)
+
+            temp_path = os.path.join(temp_root, 'temp.csv')
+            for k in [
+                'camera_path', 'animal_sensitivity_path', 'reflectivity_path',
+            ]:
+                temp, config[k] = config[k], temp_path
+                with self.assert_prints('Could not find'):
+                    v2v_nb.build_and_save_sense_converter()
+                config[k] = temp
+
+            with self.assert_prints('Done!'):
+                cam_s, an_s, tab = v2v_nb.build_and_save_sense_converter()
+
+        self.assertTrue(isinstance(cam_s, np.ndarray))
+        self.assertEqual(cam_s.shape, (401, 4))
+        self.assertTrue((cam_s == 1).all())
+
+        self.assertTrue(isinstance(an_s, np.ndarray))
+        self.assertEqual(an_s.shape, (401, 4))
+        self.assertTrue((an_s == 1).all())
 
     def test_build_coarse_warp(self):
         config = v2v_nb.get_config()

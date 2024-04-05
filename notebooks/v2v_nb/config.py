@@ -51,6 +51,9 @@ PARAM_TYPES: Dict[str, str] = {
     'build_video_pipeline': 'bool',
     # This is used in the autolinearizer-builder notebook
     'save_auto_op_path': 'path',
+    # This is used in the converter-builder notebook
+    'reflectivity_path': 'path',
+    'save_converter_path': 'path',
     # These are used in testing, not in operations
     'test_array': 'array',
     'test_bool': 'bool',
@@ -89,6 +92,9 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'build_video_pipeline': 'Build Video Pipeline?',
     # This is used in the autolinearizer-builder notebook
     'save_auto_op_path': 'Autolinearizer Path',
+    # This is used in the converter-builder notebook
+    'reflectivity_path': 'Material Reflectance Database Path',
+    'save_converter_path': 'Converter Path',
     # These are used in testing, not in operations
     'test_array': 'You should never see this',
     'test_bool': 'You should never see this',

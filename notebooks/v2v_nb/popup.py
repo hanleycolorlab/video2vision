@@ -123,6 +123,12 @@ CONFIG_PROMPTS: Dict[str, Callable] = {
     'save_auto_op_path': partial(
         save_file_dialog, 'Save autolinearizer as',
     ),
+    'reflectivity_path': partial(
+        choose_file_dialog, 'Select reflectivity database',
+    ),
+    'save_converter_path': partial(
+        save_file_dialog, 'Save sense converter as',
+    ),
 }
 
 

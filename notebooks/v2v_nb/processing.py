@@ -27,8 +27,8 @@ from .utils import (
 __all__ = [
     'build_and_run_alignment_pipeline', 'build_and_run_full_pipeline',
     'build_and_save_alignment_pipeline', 'build_and_save_autolinearizer',
-    'build_linearizer', 'build_coarse_warp', 'evaluate_conversion',
-    'evaluate_samples', 'find_and_draw_aruco_markers',
+    'build_linearizer', 'build_and_save_sense_converter', 'build_coarse_warp',
+    'evaluate_conversion', 'evaluate_samples', 'find_and_draw_aruco_markers',
     'make_example_linearization_images', 'make_final_displaybox',
     'make_ghostbox', 'make_initial_displaybox', 'make_selectorbox',
 ]
@@ -262,6 +262,54 @@ def build_and_save_autolinearizer(corners: np.ndarray, t: int,
         json.dump(autoline_op._to_json(), out_file)
 
     print('Done! You can close the notebook.')
+
+
+def build_and_save_sense_converter() -> Tuple[np.ndarray, np.ndarray, str]:
+    config = get_config()
+
+    for k in [
+        'camera_path', 'animal_sensitivity_path', 'reflectivity_path',
+        'save_converter_path'
+    ]:
+        if config[k] is None:
+            print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
+            return None, None, None
+    if os.path.exists(config['save_converter_path']):
+        print('Converter already exists. Cowardly refusing to overwrite.')
+        return None, None, None
+
+    try:
+        camera_sense = load_csv(config['camera_path'])
+        animal_sense = load_csv(config['animal_sensitivity_path'])
+        reflect = load_csv(config['reflectivity_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return None, None, None
+
+    ref_train, ref_test = reflect[:, :-250], reflect[:, -250:]
+
+    sense_converter = v2v.LinearMap.build_sensor_convertor(
+        ref_train, camera_sense, animal_sense,
+    )
+
+    pred_camera_values = ref_test.T.dot(camera_sense)
+    pred_animal_values = ref_test.T.dot(animal_sense)
+    converted_values = pred_camera_values.dot(sense_converter.mat)
+
+    table = []
+    for band in range(animal_sense.shape[1]):
+        gt, pred = pred_animal_values[:, band], converted_values[:, band]
+        r2 = coefficient_of_determination(gt, pred)
+        mae = mean_absolute_error(gt, pred)
+        table.append([band, mae, r2])
+    table = tabulate(table, headers=['Band', 'MAE', 'R2'])
+
+    with open(config['save_converter_path'], 'w') as out_file:
+        json.dump(sense_converter._to_json(), out_file)
+
+    print('Done!')
+
+    return camera_sense, animal_sense, table
 
 
 def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
