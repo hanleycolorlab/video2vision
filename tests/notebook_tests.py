@@ -1,6 +1,7 @@
 from contextlib import contextmanager, redirect_stdout
 import csv
 import io
+from math import isclose
 import os
 import sys
 import tempfile
@@ -1200,6 +1201,18 @@ class ProcessingTest(unittest.TestCase):
                     with self.assert_prints('Please specify', k):
                         v2v_nb.make_initial_displaybox()
                     config[k] = v
+
+
+class UtilsTest(unittest.TestCase):
+    def test_coefficient_of_determination(self):
+        x = np.random.normal(0, 1, (128,))
+        r_2 = v2v_nb.utils.coefficient_of_determination(x, -x)
+        self.assertTrue(isclose(r_2, 1.))
+
+        # Test singular case
+        x = np.ones(128)
+        r_2 = v2v_nb.utils.coefficient_of_determination(x, -x)
+        self.assertTrue(isclose(r_2, 1.))
 
 
 if __name__ == '__main__':

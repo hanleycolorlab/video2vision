@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -19,10 +19,36 @@ __all__ = [
 def coefficient_of_determination(gt: np.ndarray, preds: np.ndarray) \
         -> np.ndarray:
     '''
-    Calculates coefficient of determination.
+    Calculates coefficient of determination. This calculates the ``biologist's
+    $R^2$'', where we apply a linear regression before calculating the sum of
+    residuals and sum of total variation. So, for example, if we had ground
+    truth $x$ and prediction $\\hat{x} = -x$, the coefficient of determination
+    would be 1.0.
     '''
-    ss_res, ss_tot = ((gt - preds)**2).sum(), ((gt - gt.mean())**2).sum()
-    return 1 - (ss_res / ss_tot)
+    pred_sq_sum, pred_sum = preds.dot(preds), preds.sum()
+    gram_matrix = np.array([
+        [pred_sq_sum, pred_sum],
+        [pred_sum, preds.shape[0]]
+    ])
+    moment_matrix = np.array([preds.dot(gt), gt.sum()])
+    # A LinAlgError can occur if the gram_matrix is singular, in which case we
+    # drop the constant term
+    try:
+        beta_hat = np.linalg.inv(gram_matrix).dot(moment_matrix)
+    except np.linalg.LinAlgError:
+        if pred_sq_sum:
+            beta_hat = np.array([moment_matrix[0] / pred_sq_sum, 0])
+        else:
+            beta_hat = np.array([0, 0])
+    fit_preds = beta_hat[0] * preds + beta_hat[1]
+    ss_res, ss_tot = ((gt - fit_preds)**2).sum(), ((gt - gt.mean())**2).sum()
+
+    if ss_tot == ss_res == 0:
+        return 1
+    elif ss_tot == 0:
+        return 0
+    else:
+        return 1 - (ss_res / ss_tot)
 
 
 def gamma_scale(image):
