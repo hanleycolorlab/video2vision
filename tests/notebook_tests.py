@@ -1,6 +1,7 @@
 from contextlib import contextmanager, redirect_stdout
 import csv
 import io
+import json
 from math import isclose
 import os
 import sys
@@ -408,6 +409,44 @@ class DisplayTest(unittest.TestCase):
             )
             self.assertTrue((crosshair == should_be).all())
             self.assertTrue(crosshair is shift)
+
+    def test_selector_box_offside_crosshair(self):
+        crosshairs = {
+            't': 0,
+            'idxs': [0, 1],
+            'crosshair_type': [0, 0],
+            'crosshairs': [(0, 0), (8, 8)],
+        }
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            crosshair_path = os.path.join(temp_root, 'crosshairs.json')
+            with open(crosshair_path, 'w') as crosshair_file:
+                json.dump(crosshairs, crosshair_file)
+
+            with self.with_images() as loader:
+                selector_box = v2v_nb.SelectorBox(
+                    loader, output_size=(8, 8), marker_choice='box', w=4,
+                    cache_path=crosshair_path,
+                )
+                display_image = np.array(selector_box.display)
+
+        self.assertEqual(display_image.shape, (8, 8, 3))
+        should_be = np.array([
+            [  0, 255,   0,   0,   0,   0,   0,   0],
+            [255, 255,   0,   0,   0,   0,   0,   0],
+            [  0,   0,   0,   0,   0,   0,   0,   0],
+            [  0,   0,   0,   0,   0,   0,   0,   0],
+            [  0,   0,   0,   0,   0,   0,   0,   0],
+            [  0,   0,   0,   0,   0,   0,   0,   0],
+            [  0,   0,   0,   0,   0,   0, 255, 255],
+            [  0,   0,   0,   0,   0,   0, 255,   0],
+        ])
+        should_be = np.stack(
+            [np.zeros_like(should_be), should_be, np.zeros_like(should_be)],
+            axis=2
+        )
+        should_be[0, 0, :] = 255
+        self.assertTrue((display_image == should_be).all())
 
     def test_selector_box_with_autolocator(self):
         # These were acquired manually.

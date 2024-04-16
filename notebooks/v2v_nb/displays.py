@@ -513,12 +513,29 @@ class SelectorBox(DisplayBox):
         for (x, y), s in zip(self.crosshairs, self.crosshair_type):
             patch = self._cached_crosshairs[s]
             mask, patch = patch[:, :, 3:4], patch[:, :, :3]
-            ul_x = max(int(x * rs[0]) - (ch_w // 2), 0)
-            ul_y = max(int(y * rs[1]) - (ch_h // 2), 0)
-            lr_x, lr_y = ul_x + patch.shape[1], ul_y + patch.shape[0]
-            image[ul_y:lr_y, ul_x:lr_x, :] = (
-                (image[ul_y:lr_y, ul_x:lr_x, :] * (1 - mask)) +
-                (patch[:, :, :3] * mask)
+            # First, determine the desired upper-left and lower-right corners
+            # of the patch in the resized image.
+            ul_im_x = int(x * rs[0]) - (ch_w // 2)
+            ul_im_y = int(y * rs[1]) - (ch_h // 2)
+            lr_im_x = ul_im_x + patch.shape[1]
+            lr_im_y = ul_im_y + patch.shape[0]
+            # Now, we account for the possibility that the patch may not fall
+            # entirely within the image. To handle that, we subset the patch.
+            ul_pa_x, ul_pa_y = max(-ul_im_x, 0), max(-ul_im_y, 0)
+            if (ul_pa_x >= patch.shape[1]) or (ul_pa_y >= patch.shape[0]):
+                continue
+            ul_im_x, ul_im_y = max(ul_im_x, 0), max(ul_im_y, 0)
+            lr_pa_x = patch.shape[1] - max(lr_im_x - image.shape[1], 0)
+            lr_pa_y = patch.shape[0] - max(lr_im_y - image.shape[0], 0)
+            if (lr_pa_x <= ul_pa_x) or (lr_pa_y <= ul_pa_y):
+                continue
+            lr_im_x = min(lr_im_x, image.shape[1])
+            lr_im_y = min(lr_im_y, image.shape[0])
+            image[ul_im_y:lr_im_y, ul_im_x:lr_im_x, :] = (
+                (image[ul_im_y:lr_im_y, ul_im_x:lr_im_x, :] *
+                 (1 - mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :])) +
+                (patch[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :3] *
+                 mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :])
             )
 
         image = Image.fromarray(image)
