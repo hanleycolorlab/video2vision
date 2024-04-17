@@ -334,6 +334,11 @@ class DisplayTest(unittest.TestCase):
             should_be = np.zeros((4, 4, 3), dtype=np.uint8)
             self.assertTrue((display_image == should_be).all())
 
+            # Check it doesn't throw an error if there's no samples selected
+            sample_values, sample_types = selector_box.get_samples()
+            self.assertEqual(sample_values.shape, (0, 3))
+            self.assertEqual(sample_types.shape, (0,))
+
     def test_selector_box_with_align(self):
         align_pipe = v2v.Pipeline()
         loader_idx = align_pipe.add_operator(

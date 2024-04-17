@@ -327,6 +327,9 @@ class SelectorBox(DisplayBox):
         self._update_image()
 
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
+        if len(self.idxs) == 0:
+            return np.empty((0, 3)), np.empty((0,), dtype=bool)
+
         if max(self.idxs) + 1 != len(self.idxs):
             raise RuntimeError('Not all samples selected')
 
