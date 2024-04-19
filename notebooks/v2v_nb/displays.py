@@ -544,14 +544,11 @@ class SelectorBox(DisplayBox):
         image = Image.fromarray(image)
 
         draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype(FONT, max(int(32 * w / 2000), 1))
         for number, (x, y) in zip(self.idxs, self.crosshairs):
             x = int(x * rs[0]) + (ch_w // 2) + 4
             y = int(y * rs[1]) + (ch_h // 2) + 4
-            draw.text(
-                (x, y), str(number),
-                font=ImageFont.truetype(FONT, int(32 * w / 2000)),
-                fill=self.font_color
-            )
+            draw.text((x, y), str(number), font=font, fill=self.font_color)
 
         self.display = image
         self.display_image.value = self.display._repr_png_()
