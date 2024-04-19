@@ -937,6 +937,9 @@ class ProcessingTest(unittest.TestCase):
         config['animal_sensitivity_path'] = os.path.join(
             root, '../data/animal_sensitivities/apis_sensitivities.csv'
         )
+        config['camera_path'] = os.path.join(
+            root, '../data/camera_sensitivities.csv'
+        )
 
         with self.with_image() as (loader, values_path):
             selector_box = v2v_nb.SelectorBox(
@@ -968,7 +971,10 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.evaluate_conversion(
                     line_op, values_path, selector_box, None
                 )
-            for k in ['sense_converter_path', 'animal_sensitivity_path']:
+            for k in [
+                'sense_converter_path', 'animal_sensitivity_path',
+                'camera_path'
+            ]:
                 v, config[k] = config[k], None
                 with self.assert_prints('Please specify', k):
                     v2v_nb.evaluate_conversion(

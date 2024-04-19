@@ -436,7 +436,7 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
 def evaluate_conversion(line_op: v2v.ElementwiseOperator,
                         values_path: str, vis_selector: SelectorBox,
                         uv_selector: SelectorBox) \
-        -> Tuple[np.ndarray, np.ndarray, str]:
+        -> Tuple[np.ndarray, np.ndarray, np.ndarray, str]:
     config = get_config()
 
     if line_op is None:
@@ -445,7 +445,9 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
     if values_path is None:
         print('Please specify path to sample values.')
         return
-    for k in ['sense_converter_path', 'animal_sensitivity_path']:
+    for k in [
+        'sense_converter_path', 'animal_sensitivity_path', 'camera_path'
+    ]:
         if not config[k]:
             print(f"Please specify {PARAM_CAPTIONS[k].lower()}")
             return
@@ -475,6 +477,9 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
     converted_values = linearized_values.dot(sense_converter.mat)
     n_bands = animal_sense.shape[1]
 
+    camera_sense = load_csv(config['camera_path'])
+    colors = np.clip(sample_ref.T.dot(camera_sense), 0, 1)[:, 1:][:, ::-1]
+
     table = list(zip(
         [f'Band {band}' for band in range(n_bands)],
         [mean_absolute_error(converted_values[:, band],
@@ -486,7 +491,7 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
     ))
     table = tabulate(table, headers=['Color', 'MAE', 'R2'])
 
-    return expected_values, converted_values, table
+    return expected_values, converted_values, colors, table
 
 
 def evaluate_samples(line_op: v2v.ElementwiseOperator,
