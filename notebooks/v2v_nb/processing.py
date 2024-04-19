@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 from typing import Optional, Tuple
@@ -13,6 +14,7 @@ from .config import get_config, PARAM_CAPTIONS, ParamNotSet
 from .displays import DisplayBox, GhostBox, SelectorBox
 from .utils import (
     coefficient_of_determination,
+    extract_samples_from_selectors,
     get_cache_path,
     get_loader,
     get_shift,
@@ -28,9 +30,10 @@ __all__ = [
     'build_and_run_alignment_pipeline', 'build_and_run_full_pipeline',
     'build_and_save_alignment_pipeline', 'build_and_save_autolinearizer',
     'build_linearizer', 'build_and_save_sense_converter', 'build_coarse_warp',
-    'evaluate_conversion', 'evaluate_samples', 'find_and_draw_aruco_markers',
-    'make_example_linearization_images', 'make_final_displaybox',
-    'make_ghostbox', 'make_initial_displaybox', 'make_selectorbox',
+    'create_record', 'evaluate_conversion', 'evaluate_samples',
+    'find_and_draw_aruco_markers', 'make_example_linearization_images',
+    'make_final_displaybox', 'make_ghostbox', 'make_initial_displaybox',
+    'make_selectorbox',
 ]
 
 
@@ -433,6 +436,110 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
     return line_op
 
 
+def create_record(line_op: v2v.ElementwiseOperator,
+                  vis_train_selector: SelectorBox,
+                  uv_train_selector: SelectorBox,
+                  vis_test_selector: Optional[SelectorBox],
+                  uv_test_selector: Optional[SelectorBox]):
+    config = get_config()
+
+    if not config['sample_record_path']:
+        print('Skipping record creation since record path is not specified.')
+        return
+    if (vis_train_selector is None) or (uv_train_selector is None):
+        print('Skipping record creation due to lack of samples.')
+        return
+    if line_op is None:
+        print('Skipping record creation due to lack of linearizer.')
+        return
+    if config['linearization_values_path'] is None:
+        print(
+            'Skipping record creation because path to training sample values '
+            'was not specified.'
+        )
+        return
+    if not os.path.exists(config['linearization_values_path']):
+        print('Could not find training sample values.')
+        return
+    if config['camera_path'] is None:
+        print(
+            'Skipping record creation because camera sensitivity was not '
+            'specified.'
+        )
+        return
+    if not os.path.exists(config['camera_path']):
+        print('Could not find camera sensitivities.')
+        return
+
+    try:
+        samples, keep = extract_samples_from_selectors(
+            vis_train_selector, uv_train_selector
+        )
+    except RuntimeError as err:
+        print(err.args[0])
+        return
+
+    sample_ref = load_csv(config['linearization_values_path'])
+    sample_ref = sample_ref[:, keep]
+    is_train = np.ones(sample_ref.shape[1], dtype=bool)
+
+    if (
+        (vis_test_selector is not None) and (uv_test_selector is not None)
+        and (config['test_values_path'] is not None)
+    ):
+        try:
+            test_samples, test_keep = extract_samples_from_selectors(
+                vis_test_selector, uv_test_selector
+            )
+        except RuntimeError as err:
+            print(err.args[0])
+            return
+        test_sample_ref = load_csv(config['test_values_path'])
+        samples = np.concatenate((samples, test_samples), axis=0)
+        sample_ref = np.concatenate((sample_ref, test_sample_ref), axis=1)
+        is_train = np.concatenate(
+            (is_train, np.zeros(test_samples.shape[0], dtype=bool)), axis=0
+        )
+
+    camera_sense = load_csv(config['camera_path'])
+    expected_camera_values = sample_ref.T.dot(camera_sense)
+    linearized_values = line_op.apply_values(samples)
+
+    out = (
+        list(samples.T) + list(expected_camera_values.T) +
+        list(linearized_values.T) + [is_train.tolist()]
+    )
+    header = [
+        *(f'Measured Pixel - {b}' for b in ['UV', 'B', 'G', 'R']),
+        *(f'Expected Camera Catch - {b}' for b in ['UV', 'B', 'G', 'R']),
+        *(f'Linearized Values - {b}' for b in ['UV', 'B', 'G', 'R']),
+        'Training Sample?',
+    ]
+
+    if all(
+        config[k] is not None
+        for k in ['animal_sensitivity_path', 'sense_converter_path']
+    ):
+        animal_sense = load_csv(config['animal_sensitivity_path'])
+        expected_animal_values = sample_ref.T.dot(animal_sense)
+        sense_converter = load_operator(config['sense_converter_path'])
+        converted_values = linearized_values.dot(sense_converter.mat)
+        n_c = animal_sense.shape[1]
+        out += (list(expected_animal_values.T) + list(converted_values.T))
+        header += [
+            *(f'Expected Animal Catch - {b}' for b in range(1, n_c + 1)),
+            *(f'Predicted Animal Catch - {b}' for b in range(1, n_c + 1)),
+        ]
+
+    with open(config['sample_record_path'], 'w') as record_file:
+        writer = csv.writer(record_file)
+        writer.writerow(header)
+        for row in zip(*out):
+            writer.writerow(row)
+
+    print('Record created.')
+
+
 def evaluate_conversion(line_op: v2v.ElementwiseOperator,
                         values_path: str, vis_selector: SelectorBox,
                         uv_selector: SelectorBox) \
@@ -459,19 +566,15 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
     animal_sense = load_csv(config['animal_sensitivity_path'])
     expected_values = sample_ref.T.dot(animal_sense)
 
-    vis_samples, vis_drop = vis_selector.get_samples()
-    uv_samples, uv_drop = uv_selector.get_samples()
-
-    if (vis_drop != uv_drop).any():
-        print('Selection mismatch between visual and UV; please correct')
+    try:
+        samples, keep = extract_samples_from_selectors(
+            vis_selector, uv_selector
+        )
+    except RuntimeError as err:
+        print(err.args[0])
         return
 
-    samples = np.concatenate((uv_samples[:, 2:], vis_samples), axis=1)
-
-    samples = samples[~vis_drop]
-    sample_ref = sample_ref[:, ~vis_drop]
-    expected_values = expected_values[~vis_drop]
-
+    sample_ref, expected_values = sample_ref[:, keep], expected_values[keep]
     linearized_values = line_op.apply_values(samples)
     sense_converter = load_operator(config['sense_converter_path'])
     converted_values = linearized_values.dot(sense_converter.mat)
@@ -517,19 +620,15 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
     camera_sense = load_csv(config['camera_path'])
     expected_values = sample_ref.T.dot(camera_sense)
 
-    vis_samples, vis_drop = vis_selector.get_samples()
-    uv_samples, uv_drop = uv_selector.get_samples()
-
-    if (vis_drop != uv_drop).any():
-        print('Selection mismatch between visual and UV; please correct')
+    try:
+        samples, keep = extract_samples_from_selectors(
+            vis_selector, uv_selector
+        )
+    except RuntimeError as err:
+        print(err.args[0])
         return
 
-    samples = np.concatenate((uv_samples[:, 2:], vis_samples), axis=1)
-    samples = samples[~vis_drop]
-
-    sample_ref = sample_ref[:, ~vis_drop]
-    expected_values = expected_values[~vis_drop]
-
+    sample_ref, expected_values = sample_ref[:, keep], expected_values[keep]
     linearized_values = line_op.apply_values(samples)
 
     table = list(zip(

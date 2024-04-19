@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -10,9 +10,10 @@ import video2vision as v2v
 from .config import get_config, ParamNotSet
 
 __all__ = [
-    'coefficient_of_determination', 'gamma_scale', 'get_cache_path',
-    'get_loader', 'get_shift', 'load_csv', 'load_operator', 'make_displayable',
-    'mean_absolute_error', 'signal_to_noise_ratio',
+    'coefficient_of_determination', 'extract_samples_from_selectors',
+    'gamma_scale', 'get_cache_path', 'get_loader', 'get_shift', 'load_csv',
+    'load_operator', 'make_displayable', 'mean_absolute_error',
+    'signal_to_noise_ratio',
 ]
 
 
@@ -49,6 +50,23 @@ def coefficient_of_determination(gt: np.ndarray, preds: np.ndarray) \
         return 0
     else:
         return 1 - (ss_res / ss_tot)
+
+
+def extract_samples_from_selectors(vis_selector, uv_selector) \
+        -> Tuple[np.ndarray, np.ndarray]:
+    vis_samples, vis_drop = vis_selector.get_samples()
+    uv_samples, uv_drop = uv_selector.get_samples()
+
+    if (vis_drop != uv_drop).any():
+        raise RuntimeError(
+            'Selection mismatch between visual and UV; please correct'
+        )
+
+    samples = np.concatenate((uv_samples[:, 2:], vis_samples), axis=1)
+    keep = ~vis_drop
+    samples = samples[keep]
+
+    return samples, keep
 
 
 def gamma_scale(image):

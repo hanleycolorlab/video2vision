@@ -923,6 +923,123 @@ class ProcessingTest(unittest.TestCase):
             line_op = v2v_nb.build_linearizer(selector_box, selector_box)
             self.assertTrue(isinstance(line_op, v2v.PowerLaw))
 
+    def test_create_record(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        with (
+            tempfile.TemporaryDirectory() as temp_root,
+            self.with_image() as (loader, _)
+        ):
+            with self.assert_prints('Skipping record creation since rec'):
+                v2v_nb.create_record(
+                    None, None, None, None, None,
+                )
+            csv_path = os.path.join(temp_root, 'record.csv')
+            config['sample_record_path'] = csv_path
+            with self.assert_prints('Skipping record creation due to la'):
+                v2v_nb.create_record(
+                    None, None, None, None, None,
+                )
+            selector = v2v_nb.SelectorBox(loader, w=3)
+            selector.idxs = [0, 1]
+            selector.crosshairs = [(1, 1), (6, 6)]
+            selector.crosshair_type = [0, 0]
+            with self.assert_prints('Skipping record creation due to la'):
+                v2v_nb.create_record(
+                    None, selector, selector, None, None,
+                )
+            line_op = v2v.Polynomial([
+                [1.0, -1.0], [1.0, -1.0], [1.0, -1.0], [1.0, -1.0],
+            ])
+            with self.assert_prints('Skipping record creation because p'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, None, None,
+                )
+            config['linearization_values_path'] = os.path.join(
+                temp_root, 'values.csv'
+            )
+            with self.assert_prints('Could not find'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, None, None,
+                )
+            values = np.linspace(0, 1, 401)
+            wl = np.arange(300, 701, 1)
+            out = np.stack((wl, values, 0.5 + 0.5 * values), axis=1)
+            np.savetxt(
+                config['linearization_values_path'], out,
+                header='wl,1,2', delimiter=',',
+            )
+            with self.assert_prints('Skipping record creation because c'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, None, None,
+                )
+            config['camera_path'] = os.path.join(
+                temp_root, 'camera.csv'
+            )
+            with self.assert_prints('Could not find'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, None, None,
+                )
+            camera = np.full((401,), 1. / 401)
+            out = np.stack([wl] + [camera] * 4, axis=1)
+            np.savetxt(
+                config['camera_path'], out,
+                header='wl,U,B,G,R', delimiter=',',
+            )
+            with self.assert_prints('Record created.'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, None, None,
+                )
+            self.assertTrue(os.path.exists(csv_path))
+
+            with open(csv_path, 'r') as record_file:
+                samples = list(csv.DictReader(record_file))
+            self.assertEqual(len(samples), 2)
+            self.assertEqual(len(samples[0]), 13)
+            self.assertEqual(samples[0]['Training Sample?'], 'True')
+
+            config['test_values_path'] = config['linearization_values_path']
+            with self.assert_prints('Record created.'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, selector, selector,
+                )
+
+            with open(csv_path, 'r') as record_file:
+                samples = list(csv.DictReader(record_file))
+            self.assertEqual(len(samples), 4)
+            self.assertEqual(len(samples[0]), 13)
+            self.assertEqual(samples[0]['Training Sample?'], 'True')
+            self.assertEqual(samples[2]['Training Sample?'], 'False')
+
+            config['animal_sensitivity_path'] = os.path.join(
+                temp_root, 'animal.csv'
+            )
+            senses = np.full((401,), 1. / 401)
+            out = np.stack([wl] + [senses] * 2, axis=1)
+            np.savetxt(
+                config['animal_sensitivity_path'], out,
+                header='wl,U,B', delimiter=',',
+            )
+            sense_converter = v2v.LinearMap(np.ones((4, 2)))
+            config['sense_converter_path'] = os.path.join(
+                temp_root, 'converter.json'
+            )
+            with open(config['sense_converter_path'], 'w') as out_file:
+                json.dump(sense_converter._to_json(), out_file)
+
+            with self.assert_prints('Record created.'):
+                v2v_nb.create_record(
+                    line_op, selector, selector, selector, selector,
+                )
+
+            with open(csv_path, 'r') as record_file:
+                samples = list(csv.DictReader(record_file))
+            self.assertEqual(len(samples), 4)
+            self.assertEqual(len(samples[0]), 17)
+            self.assertEqual(samples[0]['Training Sample?'], 'True')
+            self.assertEqual(samples[2]['Training Sample?'], 'False')
+
     def test_evaluate_conversion(self):
         config = v2v_nb.get_config()
         v2v_nb.clear_all()

@@ -127,6 +127,9 @@ CONFIG_PROMPTS: Dict[str, Callable] = {
     'save_converter_path': partial(
         save_file_dialog, 'Save sense converter as',
     ),
+    'sample_record_path': partial(
+        save_file_dialog, 'Save sample records as',
+    ),
 }
 
 

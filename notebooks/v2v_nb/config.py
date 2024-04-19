@@ -46,6 +46,7 @@ PARAM_TYPES: Dict[str, str] = {
     'shift': 'int',
     'coe': 'array',
     'batch_size': 'int',
+    'sample_record_path': 'path',
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'path',
     'build_video_pipeline': 'bool',
@@ -85,6 +86,7 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'sense_converter_path': 'Sense Converter Path',
     'shift': 'Time Shift',
     'coe': 'Alignment Warp',
+    'sample_record_path': 'Sample Record Path',
     'linearization': 'Linearization',
     'sense_converter': 'Sense Converter',
     # This is used in the alignment-pipeline-builder notebook
