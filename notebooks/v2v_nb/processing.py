@@ -416,11 +416,11 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
         ])
         linearized_sample_values = line_op.apply_values(samples)
         for band in range(4):
-            scale = float(np.linalg.lstsq(
+            scale = np.linalg.lstsq(
                 linearized_sample_values[:, [band]],
                 expected_values[:, [band]],
                 rcond=None
-            )[0])
+            )[0][0]
             line_op.funcs[band].scale *= scale
             line_op.funcs[band].shift *= scale
 
