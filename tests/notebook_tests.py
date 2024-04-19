@@ -4,6 +4,7 @@ import io
 import json
 from math import isclose
 import os
+import shutil
 import sys
 import tempfile
 from typing import Any, Optional, Type, Union
@@ -598,7 +599,6 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.build_and_run_alignment_pipeline()
                 config[k] = v
 
-            # TODO: Currently doesn't find a viable alignment...
             with self.assert_prints('Pipeline complete'):
                 v2v_nb.build_and_run_alignment_pipeline()
 
@@ -636,6 +636,43 @@ class ProcessingTest(unittest.TestCase):
             self.assertTrue(os.path.exists(config.out_path))
             self.assertTrue((config['coe'] == np.eye(3)).all())
             self.assertEqual(config['shift'], 0)
+
+    def test_build_and_run_alignment_pipeline_with_directory_paths(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            config = v2v_nb.get_config()
+            v2v_nb.clear_all()
+
+            root = os.path.abspath(os.path.dirname(__file__))
+            config['align_pipe_path'] = os.path.join(
+                root, '../data/still_alignment_pipeline.json'
+            )
+            uv_root = os.path.join(temp_root, 'UV')
+            os.makedirs(uv_root)
+            config['uv_path'] = uv_root
+            shutil.copyfile(
+                os.path.join(root, 'data/uv_sample_2.jpg'),
+                os.path.join(uv_root, 'x.jpg')
+            )
+            vis_root = os.path.join(temp_root, 'VIS')
+            os.makedirs(vis_root)
+            config['vis_path'] = vis_root
+            shutil.copyfile(
+                os.path.join(root, 'data/vis_sample_2.jpg'),
+                os.path.join(vis_root, 'x.jpg')
+            )
+            config['uv_aligned_path'] = os.path.join(temp_root, 'UV_align')
+
+            self.assertFalse(os.path.exists(config.out_path))
+
+            with self.assert_prints('Pipeline complete'):
+                v2v_nb.build_and_run_alignment_pipeline()
+
+            self.assertTrue(os.path.exists(config.out_path))
+            self.assertTrue(config['coe'] is not None)
+            self.assertEqual(config['shift'], 0)
+
+            with self.assert_prints('Pipeline already ran'):
+                v2v_nb.build_and_run_alignment_pipeline()
 
     def test_build_and_run_full_pipeline(self):
         with tempfile.TemporaryDirectory() as temp_root:

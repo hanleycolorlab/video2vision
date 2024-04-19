@@ -280,8 +280,16 @@ class Config:
         if self['uv_aligned_path'].endswith(f'.{self.out_extension}'):
             return self['uv_aligned_path']
         else:
-            uv_name, _ = os.path.splitext(os.path.basename(self['uv_path']))
-            vis_name, _ = os.path.splitext(os.path.basename(self['vis_path']))
+            if os.path.isdir(self['uv_path']):
+                uv_name = sorted(os.listdir(self['uv_path']))[0]
+            else:
+                uv_name = os.path.basename(self['uv_path'])
+            if os.path.isdir(self['vis_path']):
+                vis_name = sorted(os.listdir(self['vis_path']))[0]
+            else:
+                vis_name = os.path.basename(self['vis_path'])
+            uv_name, _ = os.path.splitext(uv_name)
+            vis_name, _ = os.path.splitext(vis_name)
             out_name = f'{uv_name}-{vis_name}.{self.out_extension}'
             return os.path.join(self['uv_aligned_path'], out_name)
 
