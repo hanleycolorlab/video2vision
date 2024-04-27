@@ -267,6 +267,32 @@ class DisplayTest(unittest.TestCase):
             self.assertTrue((display_image[0, 0] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
 
+    def test_display_box_monochrome(self):
+        with self.with_images(rgb=False) as loader:
+            display_box = v2v_nb.DisplayBox(
+                loader, t=0, shifts=(1,), output_size=(4, 4),
+            )
+
+            # TODO: Hook display_image instead of display
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image == 0).all())
+
+            mask = np.ones((4, 4), dtype=bool)
+            mask[0, 0] = False
+
+            display_box.buttons.children[2].click()
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image[0, 0] == 64).all())
+            self.assertTrue((display_image[mask] == 0).all())
+
+            display_box.buttons.children[0].click()
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image[0, 0] == 64).all())
+            self.assertTrue((display_image[mask] == 0).all())
+
     def test_ghost_box(self):
         with self.with_images(True) as (loader_0, loader_1):
             ghost_box = v2v_nb.GhostBox(loader_0, loader_1, output_size=(4, 4))
