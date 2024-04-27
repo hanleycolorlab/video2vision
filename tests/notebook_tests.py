@@ -14,6 +14,13 @@ import numpy as np
 from PIL import Image
 import video2vision as v2v
 
+try:
+    import tifffile
+except ImportError:
+    has_tiff = False
+else:
+    has_tiff = True
+
 
 V2V_NB_ROOT = os.path.join(os.path.dirname(__file__), '../notebooks')
 if V2V_NB_ROOT not in sys.path:
@@ -219,16 +226,25 @@ class ConfigTest(unittest.TestCase):
 
 class DisplayTest(unittest.TestCase):
     @contextmanager
-    def with_images(self, sep: bool = False, rgb: bool = True):
+    def with_images(self, sep: bool = False, rgb: bool = True,
+                    ext: str = 'png', dtype=np.uint8):
         with tempfile.TemporaryDirectory() as temp_root:
-            image = np.zeros((8, 8, 3) if rgb else (8, 8), dtype=np.uint8)
+            image = np.zeros((8, 8, 3) if rgb else (8, 8), dtype=dtype)
             image[0, 0] = 255
-            path_0 = os.path.join(temp_root, '0.png')
-            Image.fromarray(image).save(path_0)
+            path_0 = os.path.join(temp_root, f'0.{ext}')
+            if ext == 'tif':
+                self.assertTrue(has_tiff, 'Needs tifffile for this test')
+                tifffile.imwrite(path_0, image, photometric='minisblack')
+            else:
+                Image.fromarray(image).save(path_0)
 
             image[:] = 0
-            path_1 = os.path.join(temp_root, '1.png')
-            Image.fromarray(image).save(path_1)
+            path_1 = os.path.join(temp_root, f'1.{ext}')
+            if ext == 'tif':
+                self.assertTrue(has_tiff, 'Needs tifffile for this test')
+                tifffile.imwrite(path_1, image, photometric='minisblack')
+            else:
+                Image.fromarray(image).save(path_1)
 
             if sep:
                 yield (
@@ -237,7 +253,7 @@ class DisplayTest(unittest.TestCase):
                 )
             else:
                 yield v2v.Loader(
-                    os.path.join(temp_root, '*.png'), (8, 8),
+                    os.path.join(temp_root, f'*.{ext}'), (8, 8),
                     num_channels=(3 if rgb else 1),
                 )
 
@@ -269,6 +285,32 @@ class DisplayTest(unittest.TestCase):
 
     def test_display_box_monochrome(self):
         with self.with_images(rgb=False) as loader:
+            display_box = v2v_nb.DisplayBox(
+                loader, t=0, shifts=(1,), output_size=(4, 4),
+            )
+
+            # TODO: Hook display_image instead of display
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image == 0).all())
+
+            mask = np.ones((4, 4), dtype=bool)
+            mask[0, 0] = False
+
+            display_box.buttons.children[2].click()
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image[0, 0] == 64).all())
+            self.assertTrue((display_image[mask] == 0).all())
+
+            display_box.buttons.children[0].click()
+            display_image = np.array(display_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image[0, 0] == 64).all())
+            self.assertTrue((display_image[mask] == 0).all())
+
+    def test_display_box_tiff(self):
+        with self.with_images(ext='tif', dtype=np.float32) as loader:
             display_box = v2v_nb.DisplayBox(
                 loader, t=0, shifts=(1,), output_size=(4, 4),
             )
@@ -461,6 +503,72 @@ class DisplayTest(unittest.TestCase):
             # Check it doesn't throw an error if there's no samples selected
             sample_values, sample_types = selector_box.get_samples()
             self.assertEqual(sample_values.shape, (0, 1))
+            self.assertEqual(sample_types.shape, (0,))
+
+    def test_selector_box_with_tif(self):
+        with self.with_images(ext='tif', dtype=np.float32) as loader:
+            selector_box = v2v_nb.SelectorBox(
+                loader, w=1, border_margin=0, output_size=(4, 4), t=1,
+            )
+
+            # TODO: Hook display_image instead of display
+            display_image = np.array(selector_box.display)
+            self.assertEqual(display_image.shape, (4, 4, 3))
+            self.assertTrue((display_image == 0).all())
+
+            # This should translate to (2, 2) in the original scale
+            selector_box._handle_click({'dataX': 1, 'dataY': 1, 'shiftKey': 1})
+            self.assertEqual(selector_box.idxs, [0])
+            self.assertEqual(selector_box.crosshairs, [(2, 2)])
+            self.assertEqual(selector_box.crosshair_type, [1])
+            should_be = np.zeros((4, 4, 3), dtype=np.uint8)
+            should_be[1, 1, 1] = 255
+            display_image = np.array(selector_box.display)
+            self.assertTrue((display_image == should_be).all())
+
+            # Click on a new point
+            selector_box._handle_click({'dataX': 2, 'dataY': 2, 'shiftKey': 0})
+            self.assertEqual(selector_box.idxs, [0, 1])
+            self.assertEqual(selector_box.crosshairs, [(2, 2), (4, 4)])
+            self.assertEqual(selector_box.crosshair_type, [1, 0])
+            should_be = np.zeros((4, 4, 3), dtype=np.uint8)
+            should_be[1, 1, 1] = should_be[2, 2, 1] = 255
+            display_image = np.array(selector_box.display)
+            self.assertTrue((display_image == should_be).all())
+
+            # Unclick
+            selector_box._handle_click({'dataX': 1, 'dataY': 1, 'shiftKey': 0})
+            self.assertEqual(selector_box.idxs, [1])
+            self.assertEqual(selector_box.crosshairs, [(4, 4)])
+            self.assertEqual(selector_box.crosshair_type, [0])
+            should_be = np.zeros((4, 4, 3), dtype=np.uint8)
+            should_be[2, 2, 1] = 255
+            display_image = np.array(selector_box.display)
+            self.assertTrue((display_image == should_be).all())
+
+            with self.assertRaises(RuntimeError):
+                selector_box.get_samples()
+
+            # Get samples
+            selector_box.idxs = [0]
+            sample_values, sample_types = selector_box.get_samples()
+            self.assertEqual(sample_values.shape, (1, 3))
+            self.assertTrue((sample_values == 0).all())
+            self.assertEqual(sample_types.shape, (1,))
+            self.assertTrue((sample_types == 0).all())
+
+            # Clear all
+            selector_box.children[1].children[-1].click()
+            self.assertEqual(selector_box.idxs, [])
+            self.assertEqual(selector_box.crosshairs, [])
+            self.assertEqual(selector_box.crosshair_type, [])
+            display_image = np.array(selector_box.display)
+            should_be = np.zeros((4, 4, 3), dtype=np.uint8)
+            self.assertTrue((display_image == should_be).all())
+
+            # Check it doesn't throw an error if there's no samples selected
+            sample_values, sample_types = selector_box.get_samples()
+            self.assertEqual(sample_values.shape, (0, 3))
             self.assertEqual(sample_types.shape, (0,))
 
     def test_selector_box_make_crosshairs(self):

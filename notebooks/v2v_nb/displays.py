@@ -114,7 +114,7 @@ class DisplayBox(widgets.VBox):
             elif image.shape[2] == 1:
                 image = image[:, :, 0]
             if image.dtype != np.uint8:
-                raise NotImplementedError(image.dtype)
+                image = np.clip(image, 0, 255).astype(np.uint8)
             if image.shape[:2] != (im_h, im_w):
                 image = cv2.resize(image, (im_w, im_h))
             self.display.paste(Image.fromarray(image), (x, 0))
@@ -490,6 +490,8 @@ class SelectorBox(DisplayBox):
 
         if (image.ndim == 3) and (image.shape[2] == 3):
             image = image[:, :, ::-1]
+        if image.dtype != np.uint8:
+            image = np.clip(image, 0, 255).astype(np.uint8)
 
         ch_h = max(int(self.sample_size * self.h / image.shape[0]), 1)
         ch_w = max(int(self.sample_size * self.w / image.shape[1]), 1)
