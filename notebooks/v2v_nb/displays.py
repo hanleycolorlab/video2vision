@@ -246,6 +246,7 @@ class SelectorBox(DisplayBox):
             output_size (optional, pair of int): If provided, the box will have
             this size display.
         '''
+        # TODO: Something broke when w was too big...
         if marker_choice not in {'box', 'cross'}:
             raise ValueError(marker_choice)
 
@@ -328,7 +329,11 @@ class SelectorBox(DisplayBox):
 
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
         if len(self.idxs) == 0:
-            return np.empty((0, 3)), np.empty((0,), dtype=bool)
+            if self._original_image.ndim == 2:
+                n_c = 1
+            else:
+                n_c = self._original_image.shape[2]
+            return np.empty((0, n_c)), np.empty((0,), dtype=bool)
 
         if max(self.idxs) + 1 != len(self.idxs):
             raise RuntimeError('Not all samples selected')
@@ -469,15 +474,13 @@ class SelectorBox(DisplayBox):
         '''
         with self.buttons.disable():
             self.t = t
-            image = self.loaders[0].get_frame(
-                t + self.shifts[0], noscale=True
-            )
+            image = self.loaders[0].get_frame(t + self.shifts[0], noscale=True)
+
             if not noauto:
                 self._autofind_crosshairs(image)
             self.set_images(image)
 
     def set_images(self, image: np.ndarray):
-        # TODO: Fix
         if self.align_pipeline is not None:
             image = image.astype(np.float32) / 256.
             image = self.align_pipeline(image, np.empty_like(image))
@@ -507,6 +510,7 @@ class SelectorBox(DisplayBox):
         # We're going to modify the image in place, so clone it. It should
         # already be resized to the correct size.
         image = np.copy(self._cached_image)
+        is_rgb = (image.ndim == 3) and (image.shape[2] == 3)
 
         h, w, *_ = image.shape
         rs = (w / self.original_size[0], h / self.original_size[1])
@@ -515,7 +519,9 @@ class SelectorBox(DisplayBox):
 
         for (x, y), s in zip(self.crosshairs, self.crosshair_type):
             patch = self._cached_crosshairs[s]
-            mask, patch = patch[:, :, 3:4], patch[:, :, :3]
+            mask, patch = patch[:, :, -1:], patch[:, :, :-1]
+            if not is_rgb:
+                patch, mask = patch.max(axis=2), mask.squeeze(2)
             # First, determine the desired upper-left and lower-right corners
             # of the patch in the resized image.
             ul_im_x = int(x * rs[0]) - (ch_w // 2)
@@ -534,12 +540,17 @@ class SelectorBox(DisplayBox):
                 continue
             lr_im_x = min(lr_im_x, image.shape[1])
             lr_im_y = min(lr_im_y, image.shape[0])
-            image[ul_im_y:lr_im_y, ul_im_x:lr_im_x, :] = (
-                (image[ul_im_y:lr_im_y, ul_im_x:lr_im_x, :] *
-                 (1 - mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :])) +
-                (patch[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :3] *
-                 mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x, :])
+            image[ul_im_y:lr_im_y, ul_im_x:lr_im_x] = (
+                (image[ul_im_y:lr_im_y, ul_im_x:lr_im_x] *
+                 (1 - mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x])) +
+                (patch[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x] *
+                 mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x])
             )
+
+        if image.dtype != np.uint8:
+            image = np.clip(image, 0, 255).astype(np.uint8)
+        if (image.ndim == 3) and (image.shape[2] == 1):
+            image = image.squeeze(2)
 
         image = Image.fromarray(image)
 
@@ -548,7 +559,10 @@ class SelectorBox(DisplayBox):
         for number, (x, y) in zip(self.idxs, self.crosshairs):
             x = int(x * rs[0]) + (ch_w // 2) + 4
             y = int(y * rs[1]) + (ch_h // 2) + 4
-            draw.text((x, y), str(number), font=font, fill=self.font_color)
+            draw.text(
+                (x, y), str(number), font=font,
+                fill=(self.font_color if is_rgb else max(self.font_color)),
+            )
 
         self.display = image
         self.display_image.value = self.display._repr_png_()
