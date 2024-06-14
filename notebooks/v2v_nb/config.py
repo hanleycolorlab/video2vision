@@ -16,7 +16,7 @@ import video2vision as v2v
 __all__ = ['clear_all', 'get_config', 'Config', 'ParamNotSet', 'save_defaults']
 
 
-MAX_TEXT_LENGTH = 40
+MAX_TEXT_LENGTH = 50
 
 DEFAULTS_PATH = 'defaults.json'
 
@@ -87,8 +87,6 @@ PARAM_CAPTIONS: Dict[str, str] = {
     'shift': 'Time Shift',
     'coe': 'Alignment Warp',
     'sample_record_path': 'Sample Record Path',
-    'linearization': 'Linearization',
-    'sense_converter': 'Sense Converter',
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'Alignment Pipeline',
     'build_video_pipeline': 'Build Video Pipeline?',
@@ -119,7 +117,7 @@ class Config:
     # This will contain pointers to the Label objects in the display window
     # once they are created.
     _popup_labels: Dict[str, Optional[Label]] = copy(_values)
-    # This will contain pointers to the Label objects in the display window
+    # This will contain pointers to the Label objects in the notebook
     # once they are created.
     _nb_labels: Dict[str, Optional[widgets.Text]] = copy(_values)
 
@@ -231,7 +229,7 @@ class Config:
     def _label_text(self, k: str) -> str:
         text = '' if (self._values[k] is None) else str(self._values[k])
         if len(text) > MAX_TEXT_LENGTH:
-            text = f'{text[:MAX_TEXT_LENGTH - 4]} ...'
+            text = f'...{text[4 - MAX_TEXT_LENGTH:]}'
         return text
 
     @property

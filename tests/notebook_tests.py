@@ -414,6 +414,15 @@ class DisplayTest(unittest.TestCase):
             self.assertEqual(sample_values.shape, (0, 3))
             self.assertEqual(sample_types.shape, (0,))
 
+    def test_selector_box_make_crosshairs(self):
+        with self.with_images() as loader:
+            selector_box = v2v_nb.SelectorBox(
+                loader, output_size=(128, 128), w=51, box_color=255,
+            )
+            self.assertTrue(
+                (self._cached_crosshairs[0][:2, :, :] == 255).all()
+            )
+
     def test_selector_box_with_align(self):
         align_pipe = v2v.Pipeline()
         loader_idx = align_pipe.add_operator(

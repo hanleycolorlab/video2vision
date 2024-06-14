@@ -433,13 +433,13 @@ class SelectorBox(DisplayBox):
 
             shift_image = np.zeros((h, w, 4), dtype=np.uint8)
             if h >= w:
-                ys = np.arange(h, dtype=np.int64)
+                ys = np.arange(h + 1 - r_h, dtype=np.int64)
                 xs = ((w / h) * ys).astype(np.int64)
                 ys = np.concatenate([ys] * r_h)
                 xs = (xs.reshape(-1, 1) + np.arange(r_h, dtype=np.int64))
                 xs = xs.flatten()
             else:
-                xs = np.arange(w, dtype=np.int64)
+                xs = np.arange(w + 1 - r_w, dtype=np.int64)
                 ys = ((h / w) * xs).astype(np.int64)
                 xs = np.concatenate([xs] * r_w)
                 ys = (ys.reshape(-1, 1) + np.arange(r_w, dtype=np.int64))

@@ -152,6 +152,28 @@ class ConfigWindow(Toplevel):
     new one can be created and will retain the same status from the global
     :class:`Params` object.
     '''
+    params = (
+        'experiment_name',
+        'align_pipe_path',
+        'vis_path',
+        'uv_path',
+        'uv_aligned_path',
+        'animal_out_path',
+        'human_out_path',
+        'vis_linearization_path',
+        'uv_linearization_path',
+        'linearization_values_path',
+        'camera_path',
+        'is_sony_camera',
+        'vis_test_path',
+        'uv_test_path',
+        'test_values_path',
+        'linearization_auto_op_path',
+        'test_auto_op_path',
+        'animal_sensitivity_path',
+        'sense_converter_path',
+    )
+
     def __init__(self):
         root = Tk()
         root.withdraw()
@@ -159,13 +181,15 @@ class ConfigWindow(Toplevel):
 
         config = get_config()
 
-        for row, (k, caption) in enumerate(PARAM_CAPTIONS.items(), 1):
-            label = Label(self, text=config._label_text(k))
+        for row, k in enumerate(self.params, 1):
+            label = Label(self, text=PARAM_CAPTIONS[k])
             label.grid(column=1, row=row)
-            config._labels[k] = label
+            label = Label(self, text=config._label_text(k))
+            label.grid(column=2, row=row)
+            config._popup_labels[k] = label
 
         self.resizable(False, False)
-        self.geometry(f'400x{len(config._labels) * 22}')
+        self.geometry(f'600x{len(self.params) * 22}')
 
 
 def show_config_window(*args) -> ConfigWindow:
