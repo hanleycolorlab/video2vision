@@ -76,6 +76,8 @@ class Polynomial(ElementwiseOperator):
         # Coerce to np.float32
         for poly in polys:
             poly.coef = poly.coef.astype(np.float32)
+            poly.domain = poly.domain.astype(np.float32)
+            poly.window = poly.window.astype(np.float32)
 
         super().__init__(funcs=polys)
 
@@ -98,8 +100,8 @@ class Polynomial(ElementwiseOperator):
             input_samples,
             target_samples,
             order,
-            domain=[0, 255],
-            window=[0, 255],
+            domain=np.array([0, 255], dtype=np.float32),
+            window=np.array([0, 255], dtype=np.float32),
         )
 
 
@@ -204,7 +206,7 @@ class PowerLawFormula:
                 bounds=bounds,
             )
 
-        return cls(*coeffs)
+        return cls(*coeffs.tolist())
 
 
 @OPERATOR_REGISTRY.register

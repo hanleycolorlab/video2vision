@@ -34,12 +34,12 @@ class PipelineTest(unittest.TestCase):
         os.makedirs(in_root)
 
         temp_path = os.path.join(in_root, '1.png')
-        self.image_1 = np.zeros((8, 8, 3), dtype=np.uint8)
+        self.image_1 = np.zeros((8, 8, 3), dtype=np.float32)
         self.image_1[:2, :2] = (1, 1, 0)
         v2v.save(self.image_1, temp_path)
 
         temp_path = os.path.join(in_root, '2.png')
-        self.image_2 = np.zeros((8, 8, 3), dtype=np.uint8)
+        self.image_2 = np.zeros((8, 8, 3), dtype=np.float32)
         self.image_2[2:4, 2:4] = (0, 1, 1)
         v2v.save(self.image_2, temp_path)
 
