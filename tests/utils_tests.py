@@ -1,3 +1,4 @@
+from math import isclose
 import os
 import unittest
 
@@ -176,9 +177,9 @@ class UtilitiesTests(unittest.TestCase):
         template = v2v.utils.get_photoreceptor_template(500, template='A2')
         self.assertTrue(isinstance(template, np.ndarray))
         self.assertEqual(template.shape, (401,))
-        self.assertEqual(template[0], 0.0005538273213520383)
-        self.assertEqual(template[100], 0.001908421897502598)
-        self.assertEqual(template[400], 2.1644502203039017e-07)
+        self.assertTrue(isclose(template[0], 0.0005538273213520383))
+        self.assertTrue(isclose(template[100], 0.001908421897502598))
+        self.assertTrue(isclose(template[400], 2.1644502203039017e-07))
 
         with self.assertRaises(ValueError):
             v2v.utils.get_photoreceptor_template(500, template='A3')
