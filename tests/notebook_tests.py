@@ -1540,6 +1540,7 @@ class ProcessingTest(unittest.TestCase):
 
             out = v2v_nb.make_final_displaybox()
             self.assertTrue(isinstance(out, v2v_nb.DisplayBox))
+            self.assertEqual(len(out.loaders), 5)
 
     def test_make_ghostbox(self):
         config = v2v_nb.get_config()
