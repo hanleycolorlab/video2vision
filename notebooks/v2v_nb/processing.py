@@ -139,7 +139,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     align_op.coe = config['coe']
     align_op.output_size = config.image_size
     if isinstance(align_op, v2v.AutoTemporalAlign):
-        align_op.shift = config['shift']
+        align_op.time_shift = config['shift']
     align_op._concatenate.bands = [[2], [0, 1, 2]]
 
     line_idx = full_pipe.add_operator(line_op)
@@ -748,8 +748,8 @@ def make_final_displaybox() -> DisplayBox:
         else:
             loaders = [
                 v2v.Loader(os.path.join(config['animal_out_path'], f'*_{b}.*'),
-                           config.image_size, num_channels=1)
-                for b in range(3)
+                           config.image_size)
+                for b in range(config.num_out_bands)
             ]
 
         return DisplayBox(
@@ -816,7 +816,7 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
             if config['align_pipe_path'] is None:
                 raise ParamNotSet('align_pipe_path')
             if (config['coe'] is None) or (config['shift'] is None):
-                print('Alignment must be run before linearization.')
+                print('Alignment must be run first.')
                 return
 
             shift = get_shift(which)
@@ -836,13 +836,14 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
                 align_op.coe = config['coe']
                 align_op.output_size = config.image_size
                 if isinstance(align_op, v2v.AutoTemporalAlign):
-                    align_op.shift = config['shift']
+                    align_op.time_shift = 0
 
         return SelectorBox(
-            get_loader(which), shift, 50, box_color=(0, 255, 255),
+            get_loader(which), w=50, box_color=(0, 255, 255),
             auto_op=auto_op, cache_path=get_cache_path(which),
             output_size=0.10, copy_from=copy_from, align_pipeline=align_pipe,
             marker_choice=marker_choice,
         )
+
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')

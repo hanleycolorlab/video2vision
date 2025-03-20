@@ -218,13 +218,7 @@ class Config:
 
     @property
     def is_3band_out(self) -> bool:
-        if self['animal_sensitivity_path'] is None:
-            raise ParamNotSet('animal_sensitivity_path')
-        animal_sense = np.genfromtxt(
-            self['animal_sensitivity_path'], skip_header=True, delimiter=','
-        )
-        n_bands = animal_sense.shape[1] - 1
-        return (n_bands == 3)
+        return (self.num_out_bands == 3)
 
     def _label_text(self, k: str) -> str:
         text = '' if (self._values[k] is None) else str(self._values[k])
@@ -257,6 +251,15 @@ class Config:
                 raise RuntimeError(
                     f'Malformed cache file: please delete {self._cache_path}'
                 )
+
+    @property
+    def num_out_bands(self) -> int:
+        if self['animal_sensitivity_path'] is None:
+            raise ParamNotSet('animal_sensitivity_path')
+        animal_sense = np.genfromtxt(
+            self['animal_sensitivity_path'], skip_header=True, delimiter=','
+        )
+        return (animal_sense.shape[1] - 1)
 
     @property
     def out_extension(self) -> Optional[str]:
