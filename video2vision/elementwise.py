@@ -229,9 +229,17 @@ class PowerLaw(ElementwiseOperator):
         super().__init__(funcs=coefs)
 
     def _to_json(self) -> Dict:
+        def _to_float(x):
+            if isinstance(x, np.ndarray):
+                x = x.item()
+            return float(x)
+
         return {
             'class': self.__class__.__name__,
-            'coefs': [(f.scale, f.base, f.shift) for f in self.funcs],
+            'coefs': [
+                (_to_float(f.scale), _to_float(f.base), _to_float(f.shift))
+                for f in self.funcs
+            ],
         }
 
     @classmethod
