@@ -1634,6 +1634,21 @@ class UtilsTest(unittest.TestCase):
         r_2 = v2v_nb.utils.coefficient_of_determination(x, -x)
         self.assertTrue(isclose(r_2, 1.))
 
+    def test_make_displayable(self):
+        # Test make_displayable works properly.
+        image = np.zeros((8, 8, 3), dtype=np.float32)
+        image[7, 7, :] = 1
+        image = v2v_nb.utils.make_displayable(image)
+
+        self.assertTrue(isinstance(image, Image.Image))
+        image = np.array(image)
+        self.assertEqual(image.shape, (8, 8, 3))
+        self.assertEqual(image.dtype, np.uint8)
+
+        should_be = np.zeros((8, 8, 3), dtype=np.uint8)
+        should_be[7, 7, :] = 255
+        self.assertTrue((image == should_be).all())
+
 
 if __name__ == '__main__':
     unittest.main()

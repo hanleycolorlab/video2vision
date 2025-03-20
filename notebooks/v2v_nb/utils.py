@@ -71,12 +71,14 @@ def extract_samples_from_selectors(vis_selector, uv_selector) \
 
 def gamma_scale(image):
     '''
-    Performs gamma scaling on an image prior to display.
+    Performs gamma scaling on an image prior to display. This also has the
+    effect of coercing the image to a floating point dtype.
     '''
     # Coerce to [0, 1] range
     pix_min = image.min((0, 1), keepdims=True)
     pix_max = image.max((0, 1), keepdims=True)
     image = (image - pix_min) / np.clip(pix_max - pix_min, 1e-6, 1)
+    # Apply gamma scale and return
     return image ** 2.2
 
 
@@ -143,7 +145,7 @@ def make_displayable(*images: np.ndarray) -> Image:
 
     for image in images:
         image = gamma_scale(image)
-        if image.dtype in {np.float32, np.float64}:
+        if np.issubdtype(image.dtype, np.floating):
             image = np.clip(256 * image, 0, 255).astype(np.uint8)
         if (image.ndim == 3) and (image.shape[2] == 1):
             image = image.reshape(*image.shape[:2])
