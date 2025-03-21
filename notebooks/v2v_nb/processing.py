@@ -746,9 +746,11 @@ def make_final_displaybox() -> DisplayBox:
             loaders = [get_loader('animal_out_path')]
 
         else:
+            # MP4 using our codec is saved as three-channel
+            n_c = 3 if config.is_video else 1
             loaders = [
                 v2v.Loader(os.path.join(config['animal_out_path'], f'*_{b}.*'),
-                           config.image_size)
+                           config.image_size, num_channels=n_c)
                 for b in range(config.num_out_bands)
             ]
 

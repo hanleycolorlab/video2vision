@@ -125,6 +125,7 @@ class Config:
         self._image_size = None
         self._out_extension = None
         self._cache_ready = False
+        self._is_video = None
         self._values['batch_size'] = 16
 
         if os.path.exists(DEFAULTS_PATH):
@@ -219,6 +220,16 @@ class Config:
     @property
     def is_3band_out(self) -> bool:
         return (self.num_out_bands == 3)
+
+    @property
+    def is_video(self) -> bool:
+        if self._is_video is None:
+            if self['align_pipe_path'] is None:
+                raise ParamNotSet('align_pipe_path')
+            align_pipe = v2v.load_pipeline(self['align_pipe_path'])
+            out_ext = align_pipe.get_writers()[0].extension
+            self._is_video = (out_ext.lower() == 'mp4')
+        return self._is_video
 
     def _label_text(self, k: str) -> str:
         text = '' if (self._values[k] is None) else str(self._values[k])

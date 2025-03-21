@@ -1534,6 +1534,9 @@ class ProcessingTest(unittest.TestCase):
                 config[k] = v
 
             config['animal_out_path'] = 'asd'
+            config['align_pipe_path'] = os.path.join(
+                os.path.dirname(__file__), 'data/pipeline.json'
+            )
             with self.assert_prints('Could not find'):
                 v2v_nb.make_final_displaybox()
             config['animal_out_path'] = animal_path
