@@ -95,6 +95,13 @@ def build_and_run_alignment_pipeline():
         except v2v.AlignmentNotFound:
             print('Failed to find alignment. Check inputs.')
             return
+        except v2v.MisshapenImageError:
+            print(
+                'Found image with unexpected shape. (Note: a common cause of '
+                'this error is pointing the input path to a directory '
+                'containing both RAW and JPEG images.)'
+            )
+            return
         else:
             print('Pipeline complete')
 
@@ -169,7 +176,16 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         config['human_out_path'],
     )
 
-    full_pipe.run()
+    try:
+        full_pipe.run()
+    except v2v.MisshapenImageError:
+        print(
+            'Found image with unexpected shape. (Note: a common cause of '
+            'this error is pointing the input path to a directory '
+            'containing both RAW and JPEG images.)'
+        )
+        return
+
     print('Pipeline complete')
 
 

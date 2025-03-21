@@ -22,7 +22,9 @@ except ImportError:
 from .operators import Operator, OPERATOR_REGISTRY
 from .utils import _coerce_to_image
 
-__all__ = ['load', 'Loader', 'OutOfInputs', 'save', 'Writer']
+__all__ = [
+    'load', 'Loader', 'MisshapenImageError', 'OutOfInputs', 'save', 'Writer'
+]
 
 # Default video codec
 _VIDEO_CODEC = cv2.VideoWriter_fourcc(*'mp4v')
@@ -264,7 +266,7 @@ class Loader(Operator):
 
     def _check_size(self, image: np.ndarray):
         if image.shape != (*self.expected_size[::-1], self.num_channels):
-            raise RuntimeError(
+            raise MisshapenImageError(
                 f'Image does not match expected size: {image.shape} vs '
                 f'{(*self.expected_size[::-1], self.num_channels)}'
             )
@@ -558,6 +560,13 @@ class OutOfInputs(Exception):
     '''
     This exception is raised by a :class:`Loader` when it exhausts its
     available inputs.
+    '''
+
+
+class MisshapenImageError(Exception):
+    '''
+    This exception is raised by a :class:`Loader` when it attempts to load an
+    image or video, but finds it has a different shape from what is expected.
     '''
 
 

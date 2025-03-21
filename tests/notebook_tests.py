@@ -827,6 +827,25 @@ class ProcessingTest(unittest.TestCase):
 
             self.assertEqual(time_made, os.path.getmtime(config.out_path))
 
+    def test_build_and_run_alignment_bad_image_handling(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            config = v2v_nb.get_config()
+            v2v_nb.clear_all()
+
+            root = os.path.abspath(os.path.dirname(__file__))
+            config['align_pipe_path'] = os.path.join(
+                root, '../data/still_alignment_pipeline.json'
+            )
+            config['uv_path'] = os.path.join(root, 'data/uv_sample_2.jpg')
+            config['vis_path'] = os.path.join(temp_root, 'vis_sample.jpg')
+            config['uv_aligned_path'] = os.path.join(temp_root, 'out')
+
+            image = Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8))
+            image.save(config['vis_path'])
+
+            with self.assert_prints('Found image with unexpected shape'):
+                v2v_nb.build_and_run_alignment_pipeline()
+
     def test_build_and_run_alignment_pipeline_with_cached_warp(self):
         with tempfile.TemporaryDirectory() as temp_root:
             config = v2v_nb.get_config()

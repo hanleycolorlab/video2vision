@@ -189,7 +189,7 @@ class IOTest(unittest.TestCase):
                 expected_size=(16, 16),
             )
             loader()
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(v2v.MisshapenImageError):
                 loader()
 
     def test_iter_check_size_with_mp4(self):
@@ -200,7 +200,7 @@ class IOTest(unittest.TestCase):
             v2v.save(video, path)
             loader = v2v.Loader(temp_root, (8, 8), batch_size=1)
 
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(v2v.MisshapenImageError):
                 loader()
 
     def test_get_frame_check_size_with_png(self):
@@ -214,7 +214,7 @@ class IOTest(unittest.TestCase):
                 expected_size=(16, 16)
             )
             loader.get_frame(0)
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(v2v.MisshapenImageError):
                 loader.get_frame(1)
 
     def test_get_frame_check_size_with_mp4(self):
@@ -225,7 +225,7 @@ class IOTest(unittest.TestCase):
             v2v.save(video, path)
             loader = v2v.Loader(temp_root, batch_size=1, expected_size=(8, 8))
 
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(v2v.MisshapenImageError):
                 loader.get_frame(0)
 
     def test_loader_buffer(self):
