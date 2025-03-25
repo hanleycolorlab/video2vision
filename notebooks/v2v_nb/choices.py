@@ -140,8 +140,10 @@ class ArrayText(widgets.GridBox):
 class BoolBox(LabeledBox):
     def __init__(self, key: str):
         config = get_config()
+        if config._values[key] is None:
+            config._values[key] = False
         checkbox = widgets.Checkbox(
-            value=config._values[key] or False,
+            value=config._values[key],
             disabled=False,
             layout=widgets.Layout(width=TEXT_WIDTH, height=WIDGET_HEIGHT),
         )

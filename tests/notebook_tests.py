@@ -100,6 +100,12 @@ class ChoicesTest(unittest.TestCase):
         self.assertEqual(widget.value, None)
 
     def test_bool_box(self):
+        config = v2v_nb.get_config()
+        config['test_bool'] = None
+        widget = v2v_nb.BoolBox('test_bool')
+        self.assertTrue(config['test_bool'] is False)
+        config['test_bool'] = None
+
         self._test_widget('test_bool', v2v_nb.BoolBox, True, False, False)
 
     def test_int_box(self):
