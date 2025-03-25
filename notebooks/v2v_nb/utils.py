@@ -152,7 +152,7 @@ def make_displayable(*images: np.ndarray) -> Image:
         fmt = 'L' if (image.ndim == 2) else 'RGB'
         image = Image.fromarray(image, fmt)
         display_image.paste(image, (x, 0))
-        x += image.size[1]
+        x += image.size[0]
 
     return display_image
 

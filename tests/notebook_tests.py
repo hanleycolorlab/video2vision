@@ -1657,18 +1657,21 @@ class UtilsTest(unittest.TestCase):
         self.assertTrue(isclose(r_2, 1.))
 
     def test_make_displayable(self):
-        # Test make_displayable works properly.
-        image = np.zeros((8, 8, 3), dtype=np.float32)
-        image[7, 7, :] = 1
-        image = v2v_nb.utils.make_displayable(image)
+        # Test make_displayable works properly. Note deliberate choice of
+        # varying sizes.
+        image_1 = np.zeros((9, 7, 3), dtype=np.float32)
+        image_1[8, 3, :] = 1
+        image_2 = np.zeros((8, 5, 1), dtype=np.float32)
+        image_2[7, 4, :] = 1
+        image = v2v_nb.utils.make_displayable(image_1, image_2)
 
         self.assertTrue(isinstance(image, Image.Image))
         image = np.array(image)
-        self.assertEqual(image.shape, (8, 8, 3))
+        self.assertEqual(image.shape, (9, 12, 3))
         self.assertEqual(image.dtype, np.uint8)
 
-        should_be = np.zeros((8, 8, 3), dtype=np.uint8)
-        should_be[7, 7, :] = 255
+        should_be = np.zeros((9, 12, 3), dtype=np.uint8)
+        should_be[8, 3, :] = should_be[7, 11, :] = 255
         self.assertTrue((image == should_be).all())
 
 
