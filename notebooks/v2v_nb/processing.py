@@ -344,20 +344,20 @@ def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
             'Please run both selectors and choose tie points before building '
             'the warp.'
         )
-        return
+        return None, None
     if config['vis_path'] is None:
         print('Please specify path to visible image.')
-        return
+        return None, None
 
     n_uv_crosshairs = len(uv_selector.crosshairs)
     n_vis_crosshairs = len(vis_selector.crosshairs)
 
     if n_uv_crosshairs != n_vis_crosshairs:
         print('You need to select the same number of samples in each image.')
-        return
+        return None, None
     if n_uv_crosshairs < 4:
         print('At least four tie points must be selected in each image.')
-        return
+        return None, None
 
     warp_op = v2v.Warp.build_from_tiepoints(
         uv_selector.crosshairs,
@@ -564,19 +564,19 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
 
     if line_op is None:
         print('Linearizer must be built before evaluating.')
-        return
+        return None, None, None, None
     if values_path is None:
         print('Please specify path to sample values.')
-        return
+        return None, None, None, None
     for k in [
         'sense_converter_path', 'animal_sensitivity_path', 'camera_path'
     ]:
         if not config[k]:
             print(f"Please specify {PARAM_CAPTIONS[k].lower()}")
-            return
+            return None, None, None, None
     if (vis_selector is None) or (uv_selector is None):
         print('Please select samples before performing evaluation.')
-        return
+        return None, None, None, None
 
     sample_ref = load_csv(values_path)
     animal_sense = load_csv(config['animal_sensitivity_path'])
@@ -588,7 +588,7 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
         )
     except RuntimeError as err:
         print(err.args[0])
-        return
+        return None, None, None, None
 
     sample_ref, expected_values = sample_ref[:, keep], expected_values[keep]
     linearized_values = line_op.apply_values(samples)
@@ -621,16 +621,16 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
 
     if line_op is None:
         print('Linearizer must be built before evaluating.')
-        return
+        return None, None, None, None
     if values_path is None:
         print('Please specify path to sample values.')
-        return
+        return None, None, None, None
     if not config['camera_path']:
         print(f"Please specify {PARAM_CAPTIONS['camera_path'].lower()}")
-        return
+        return None, None, None, None
     if (vis_selector is None) or (uv_selector is None):
         print('Please select samples before performing evaluation.')
-        return
+        return None, None, None, None
 
     sample_ref = load_csv(values_path)
     camera_sense = load_csv(config['camera_path'])
@@ -642,7 +642,7 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
         )
     except RuntimeError as err:
         print(err.args[0])
-        return
+        return None, None, None, None
 
     sample_ref, expected_values = sample_ref[:, keep], expected_values[keep]
     linearized_values = line_op.apply_values(samples)
@@ -669,7 +669,7 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
         loader = get_loader('vis_path')
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
-        return
+        return None, None, None
 
     for t in range(len(loader)):
         frame = loader.get_frame(t, noscale=True)
@@ -684,7 +684,7 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
             break
     else:
         print('Failed to locate markers. Please check input image.')
-        return
+        return None, None, None
 
     corners = corners.squeeze(0)
 
@@ -693,7 +693,7 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
             f'Found {corners.shape[0]} markers, expected 4. Please check '
             f'input image.'
         )
-        return
+        return None, None, None
 
     image = Image.fromarray(frame)
     draw = ImageDraw.Draw(image)
