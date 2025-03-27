@@ -1,4 +1,5 @@
 from copy import copy
+from functools import lru_cache
 from glob import glob
 import json
 import os
@@ -122,8 +123,6 @@ class Config:
     _nb_labels: Dict[str, Optional[widgets.Text]] = copy(_values)
 
     def __init__(self):
-        self._image_size = None
-        self._out_extension = None
         self._cache_ready = False
         self._is_video = None
         self._values['batch_size'] = 16
@@ -192,30 +191,17 @@ class Config:
 
     @property
     def image_size(self) -> Optional[Tuple[int, int]]:
-        if self._image_size is None:
-            for k in [
-                'vis_path', 'uv_path', 'uv_aligned_path', 'human_out_path',
-                'animal_out_path',
-            ]:
-                if self[k] is not None:
-                    path = self[k]
-                    if os.path.isdir(path):
-                        path = os.path.join(path, '*')
-                    try:
-                        path = glob(path)[0]
-                    except IndexError:
-                        continue
-                    else:
-                        self._image_size = _get_size(path)
-                        break
-            else:
-                if self['align_pipe_path'] is None:
-                    raise ParamNotSet('align_pipe_path')
-                align_pipe = v2v.load_pipeline(self['align_pipe_path'])
-                self._image_size = align_pipe.get_loaders()[0].expected_size
-                self._out_extension = align_pipe.get_writers()[0].extension
-
-        return tuple(self._image_size)
+        for k in [
+            'vis_path', 'uv_path', 'uv_aligned_path', 'human_out_path',
+            'animal_out_path',
+        ]:
+            if self[k] is not None:
+                return _get_size(self[k])
+        else:
+            if self['align_pipe_path'] is None:
+                raise ParamNotSet('vis_path')
+            align_pipe = v2v.load_pipeline(self['align_pipe_path'])
+            return tuple(align_pipe.get_loaders()[0].expected_size)
 
     @property
     def is_3band_out(self) -> bool:
@@ -274,14 +260,10 @@ class Config:
 
     @property
     def out_extension(self) -> Optional[str]:
-        if self._out_extension is None:
-            if self['align_pipe_path'] is None:
-                raise ParamNotSet('align_pipe_path')
-            align_pipe = v2v.load_pipeline(self['align_pipe_path'])
-            self._image_size = align_pipe.get_loaders()[0].expected_size
-            self._out_extension = align_pipe.get_writers()[0].extension
-
-        return self._out_extension
+        if self['align_pipe_path'] is None:
+            raise ParamNotSet('align_pipe_path')
+        align_pipe = v2v.load_pipeline(self['align_pipe_path'])
+        return align_pipe.get_writers()[0].extension
 
     @property
     def out_path(self) -> Optional[str]:
@@ -375,7 +357,6 @@ def clear_all():
         _config[k] = None
 
     _config['batch_size'] = 16
-    _config._out_extension = _config._image_size = None
 
 
 def _get_size(path: str) -> Tuple[int, int]:
@@ -383,11 +364,39 @@ def _get_size(path: str) -> Tuple[int, int]:
     Extracts and returns the size of an image or video on disk, as (height,
     width).
     '''
+    # We do this as a wrapper around a second function, _get_image_size, so we
+    # can lru_cache it. That's why we pass the last modified time of the image
+    # to _get_image_size, even though it doesn't use it: so it becomes part of
+    # the cache key in case the image is later modified while the program is
+    # still running.
+    if os.path.isdir(path):
+        path = os.path.join(path, '*')
+    try:
+        path = glob(path)[0]
+    except IndexError:
+        raise FileNotFoundError(path)
+    else:
+        return _get_image_size(path, os.path.getmtime(path))
+
+
+@lru_cache
+def _get_image_size(path: str, x: int) -> Tuple[int, int]:
     if path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
         w = int(reader.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(reader.get(cv2.CAP_PROP_FRAME_HEIGHT))
         return (w, h)
+
+    elif path.lower().endswith(('.arw', '.nef')):
+        import rawpy
+        with rawpy.imread(path) as raw_file:
+            return (raw_file.sizes.width, raw_file.sizes.height)
+
+    elif path.lower().endswith(('.tif', '.tiff')):
+        import tiffile
+        image = tifffile.imread(path)
+        return (image.shape[1], image.shape[0])
+
     else:
         with Image.open(path) as image:
             return image.size

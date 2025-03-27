@@ -177,6 +177,26 @@ class ConfigTest(unittest.TestCase):
             config['experiment_name'] = temp_root
             self.assertTrue(config['is_sony_camera'])
 
+    def test_get_size_arw(self):
+        data_root = os.path.join(os.path.dirname(__file__), 'data')
+        arw_path = os.path.join(data_root, 'raw_example.arw')
+        self.assertEqual(v2v_nb.config._get_size(arw_path), (6024, 4024))
+
+    def test_get_size_jpeg(self):
+        data_root = os.path.join(os.path.dirname(__file__), 'data')
+        arw_path = os.path.join(data_root, 'uv_sample.jpg')
+        self.assertEqual(v2v_nb.config._get_size(arw_path), (6000, 3376))
+
+    def test_get_size_caching(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            path = os.path.join(temp_root, 'temp.png')
+            image = np.zeros((8, 10, 3), dtype=np.uint8)
+            Image.fromarray(image).save(path)
+            self.assertEqual(v2v_nb.config._get_size(path), (10, 8))
+            image = np.zeros((9, 10, 3), dtype=np.uint8)
+            Image.fromarray(image).save(path)
+            self.assertEqual(v2v_nb.config._get_size(path), (10, 9))
+
     def test_image_size_and_out_extension(self):
         config = v2v_nb.get_config()
         v2v_nb.clear_all()
@@ -189,11 +209,7 @@ class ConfigTest(unittest.TestCase):
         with self.make_pipe() as pipe_path:
             config['align_pipe_path'] = pipe_path
             self.assertEqual(config.image_size, (8, 10))
-
-        # Note this is NOT inside the context manager. This tests that BOTH
-        # properties are pulled in, since the pipe.json no longer exists at
-        # this point.
-        self.assertEqual(config.out_extension, 'png')
+            self.assertEqual(config.out_extension, 'png')
 
     def test_out_path(self):
         config = v2v_nb.get_config()
@@ -820,6 +836,12 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.build_and_run_alignment_pipeline()
                 config[k] = v
 
+            for k in ['align_pipe_path', 'uv_path', 'vis_path']:
+                config[k], was_path = 'nonexistent_path.jpg', config[k]
+                with self.assert_prints('Could not find file'):
+                    v2v_nb.build_and_run_alignment_pipeline()
+                config[k] = was_path
+
             with self.assert_prints('Pipeline complete'):
                 v2v_nb.build_and_run_alignment_pipeline()
 
@@ -964,6 +986,15 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.build_and_run_full_pipeline(line_op)
                 config[k] = v
 
+            for k in [
+                'align_pipe_path', 'uv_path', 'vis_path',
+                'sense_converter_path', 'animal_sensitivity_path',
+            ]:
+                config[k], was_path = 'nonexistent_path.jpg', config[k]
+                with self.assert_prints('Could not find'):
+                    v2v_nb.build_and_run_full_pipeline(line_op)
+                config[k] = was_path
+
             with self.assert_prints('Pipeline complete'):
                 v2v_nb.build_and_run_full_pipeline(line_op)
 
@@ -996,8 +1027,14 @@ class ProcessingTest(unittest.TestCase):
             pipe_path = os.path.join(temp_root, 'pipe.json')
             config['save_align_pipe_path'] = pipe_path
             config['build_video_pipeline'] = True
+
             with self.assert_prints('Please specify path to visible'):
                 v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
+            config['vis_path'] = 'nonexistent_path.jpg'
+            with self.assert_prints('Could not find'):
+                v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
             with self.with_image(as_loader=False) as (path, _):
                 config['vis_path'] = path
                 with self.assert_prints('Done!'):
@@ -1032,9 +1069,8 @@ class ProcessingTest(unittest.TestCase):
                 config['camera_path'] = os.path.join(temp_root, 'camera.csv')
                 _create_dummy_csv(config['camera_path'], 1. / 401)
 
-                config['linearization_values_path'] = os.path.join(
-                    temp_root, 'values.csv'
-                )
+                lin_val_path = os.path.join(temp_root, 'values.csv')
+                config['linearization_values_path'] = lin_val_path
                 _create_dummy_csv(config['linearization_values_path'], 1)
 
                 config['save_auto_op_path'] = config['camera_path']
@@ -1043,6 +1079,11 @@ class ProcessingTest(unittest.TestCase):
 
                 auto_op_path = os.path.join(temp_root, 'autolinearizer.json')
                 config['save_auto_op_path'] = auto_op_path
+                config['linearization_values_path'] = 'nonexistent.csv'
+                with self.assert_prints('Could not find file'):
+                    v2v_nb.build_and_save_autolinearizer(corners, t, selector)
+                config['linearization_values_path'] = lin_val_path
+
                 selector.crosshairs = [(2, 2), (8, 2), (8, 8)]
                 with self.assert_prints('Selected 3 but have values for 4'):
                     v2v_nb.build_and_save_autolinearizer(corners, t, selector)
@@ -1141,6 +1182,12 @@ class ProcessingTest(unittest.TestCase):
             # This should be a 90 degree clockwise rotation
             vis_selector.crosshairs = [(0, 0), (32, 0), (32, 32), (0, 32)]
             uv_selector.crosshairs = [(0, 32), (0, 0), (32, 0), (32, 32)]
+
+            config['vis_path'] = 'nonexistent.jpg'
+            with self.assert_prints('Could not find'):
+                v2v_nb.build_coarse_warp(vis_selector, uv_selector)
+            config['vis_path'] = path
+
             warp_op, display_image = v2v_nb.build_coarse_warp(
                 vis_selector, uv_selector
             )
@@ -1194,6 +1241,12 @@ class ProcessingTest(unittest.TestCase):
             ]:
                 v, config[k] = config[k], None
                 with self.assert_prints('Please specify', k):
+                    v2v_nb.build_linearizer(selector_box, selector_box)
+                config[k] = v
+
+            for k in ['camera_path', 'linearization_values_path']:
+                v, config[k] = config[k], 'nonexistent.csv'
+                with self.assert_prints('Could not find'):
                     v2v_nb.build_linearizer(selector_box, selector_box)
                 config[k] = v
 
@@ -1376,6 +1429,17 @@ class ProcessingTest(unittest.TestCase):
                     )
                 config[k] = v
 
+            for k in [
+                'sense_converter_path', 'animal_sensitivity_path',
+                'camera_path'
+            ]:
+                v, config[k] = config[k], 'nonexistent.csv'
+                with self.assert_prints('Could not find'):
+                    v2v_nb.evaluate_conversion(
+                        line_op, values_path, selector_box, selector_box,
+                    )
+                config[k] = v
+
             v2v_nb.evaluate_conversion(
                 line_op, values_path, selector_box, selector_box,
             )
@@ -1414,6 +1478,11 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.evaluate_samples(
                     line_op, values_path, selector_box, selector_box,
                 )
+            config['camera_path'] = 'nonexistent.csv'
+            with self.assert_prints('Could not find'):
+                v2v_nb.evaluate_samples(
+                    line_op, values_path, selector_box, selector_box,
+                )
             root = os.path.abspath(os.path.dirname(__file__))
             config['camera_path'] = os.path.join(
                 root, '../data/camera_sensitivities.csv'
@@ -1422,6 +1491,7 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.evaluate_samples(
                     line_op, values_path, selector_box, None
                 )
+
             v2v_nb.evaluate_samples(
                 line_op, values_path, selector_box, selector_box,
             )
@@ -1438,7 +1508,9 @@ class ProcessingTest(unittest.TestCase):
         with self.assert_prints('Failed to locate markers.'):
             v2v_nb.find_and_draw_aruco_markers()
 
-        v2v_nb.clear_all()
+        config['vis_path'] = 'nonexistent.jpg'
+        with self.assert_prints('Could not find'):
+            v2v_nb.find_and_draw_aruco_markers()
 
         config['vis_path'] = os.path.join(
             root_path, 'data/marker_sample_1.jpg'
@@ -1497,6 +1569,12 @@ class ProcessingTest(unittest.TestCase):
             [0.0047058172145495476, 4185.031519941784, -0.01,
              0.16736099187966763],
         ])
+
+        for k in ['align_pipe_path', 'uv_path', 'vis_path']:
+            v, config[k] = config[k], 'nonexistent.jpg'
+            with self.assert_prints('Could not find'):
+                v2v_nb.make_example_linearization_images(line_op)
+            config[k] = v
 
         image = v2v_nb.make_example_linearization_images(line_op)
         self.assertTrue(isinstance(image, Image.Image))
@@ -1641,14 +1719,18 @@ class ProcessingTest(unittest.TestCase):
                 config['vis_test_path'] = image_path
 
                 with self.assert_prints('Alignment must be run'):
-                    v2v_nb.make_selectorbox('vis_test')
+                    v2v_nb.make_selectorbox('vis_test_path')
                 config['shift'], config['coe'] = 0, np.eye(3)
 
                 for k in ['vis_test_path', 'align_pipe_path']:
                     v, config[k] = config[k], None
                     with self.assert_prints('Please specify', k):
-                        v2v_nb.make_initial_displaybox()
+                        v2v_nb.make_selectorbox('vis_test_path')
                     config[k] = v
+
+                    config['vis_test_path'] = 'nonexistent.jpeg'
+                    with self.assert_prints('Could not find', k):
+                        v2v_nb.make_selectorbox('vis_test_path')
 
 
 class UtilsTest(unittest.TestCase):

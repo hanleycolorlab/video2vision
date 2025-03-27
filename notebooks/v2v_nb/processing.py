@@ -17,7 +17,6 @@ from .utils import (
     extract_samples_from_selectors,
     get_cache_path,
     get_loader,
-    get_shift,
     load_csv,
     load_operator,
     make_displayable,
@@ -50,8 +49,19 @@ def build_and_run_alignment_pipeline():
             return
 
     # Build alignment pipe
-    align_pipe = v2v.load_pipeline(config['align_pipe_path'])
-    config._image_size = align_pipe.get_loaders()[0].expected_size
+    try:
+        align_pipe = v2v.load_pipeline(config['align_pipe_path'])
+        config._image_size = align_pipe.get_loaders()[0].expected_size
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+
     config._out_extension = align_pipe.get_writers()[0].extension
     align_pipe.set_all_paths(
         config['uv_path'], config['vis_path'], config['uv_aligned_path'],
@@ -73,7 +83,16 @@ def build_and_run_alignment_pipeline():
         )
         return
     align_op.coe = config['coe']
-    align_op.output_size = config.image_size
+
+    try:
+        align_op.output_size = config.image_size
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
+
     if isinstance(align_op, v2v.AutoTemporalAlign):
         align_op.time_shift = config['shift']
 
@@ -100,6 +119,12 @@ def build_and_run_alignment_pipeline():
                 'Found image with unexpected shape. (Note: a common cause of '
                 'this error is pointing the input path to a directory '
                 'containing both RAW and JPEG images.)'
+            )
+            return
+        except FileNotFoundError as err:
+            print(
+                f'Could not find file {err.args[0]}. Please correct config and try'
+                f' again.'
             )
             return
         else:
@@ -136,7 +161,14 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
             print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
             return
 
-    full_pipe = v2v.load_pipeline(config['align_pipe_path'])
+    try:
+        full_pipe = v2v.load_pipeline(config['align_pipe_path'])
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
 
     align_idx, = (
         i for i in full_pipe.nodes
@@ -144,22 +176,43 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
     )
     align_op = full_pipe.nodes[align_idx]['operator']
     align_op.coe = config['coe']
-    align_op.output_size = config.image_size
+
+    try:
+        align_op.output_size = config.image_size
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
+
     if isinstance(align_op, v2v.AutoTemporalAlign):
         align_op.time_shift = config['shift']
     align_op._concatenate.bands = [[2], [0, 1, 2]]
 
-    line_idx = full_pipe.add_operator(line_op)
-    write_idx = next(
-        i for i in full_pipe.nodes
-        if isinstance(full_pipe.nodes[i]['operator'], v2v.Writer)
-    )
-    write_op = full_pipe.nodes[write_idx]['operator']
-    write_op.separate_bands = not config.is_3band_out
-    full_pipe.remove_edge(align_idx, write_idx)
-    full_pipe.add_edge(align_idx, line_idx, in_slot=0)
+    try:
+        line_idx = full_pipe.add_operator(line_op)
+        write_idx = next(
+            i for i in full_pipe.nodes
+            if isinstance(full_pipe.nodes[i]['operator'], v2v.Writer)
+        )
+        write_op = full_pipe.nodes[write_idx]['operator']
+        # is_3band_out can trigger FileNotFound
+        write_op.separate_bands = not config.is_3band_out
+        full_pipe.remove_edge(align_idx, write_idx)
+        full_pipe.add_edge(align_idx, line_idx, in_slot=0)
 
-    sense_converter = load_operator(config['sense_converter_path'])
+        sense_converter = load_operator(config['sense_converter_path'])
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
+
     sense_idx = full_pipe.add_operator(sense_converter)
     full_pipe.add_edge(line_idx, sense_idx, in_slot=0)
     full_pipe.add_edge(sense_idx, write_idx, in_slot=0)
@@ -184,6 +237,9 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
             'this error is pointing the input path to a directory '
             'containing both RAW and JPEG images.)'
         )
+        return
+    except FileNotFoundError:
+        print('Could not find image files. Please check visible and UV paths.')
         return
 
     print('Pipeline complete')
@@ -222,8 +278,17 @@ def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
         write_op = v2v.Writer(extension='png')
 
     pipe = v2v.Pipeline()
-    uv_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
-    vis_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+
+    try:
+        uv_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+        vis_loader_idx = pipe.add_operator(v2v.Loader(None, config.image_size))
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+    except FileNotFoundError:
+        print('Could not find images; please check visible input path.')
+        return
+
     coarse_align_idx = pipe.add_operator(warp_op)
     fine_align_idx = pipe.add_operator(align_op)
     write_idx = pipe.add_operator(write_op)
@@ -259,7 +324,16 @@ def build_and_save_autolinearizer(corners: np.ndarray, t: int,
         print('Autolinearizer already exists. Cowardly refusing to overwrite.')
         return
 
-    sample_ref = load_csv(config['linearization_values_path'])
+    try:
+        sample_ref = load_csv(config['linearization_values_path'])
+        camera_sense = load_csv(config['camera_path'])
+    except FileNotFoundError as err:
+        print(
+            f'Could not find file {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
+        return
+
     if len(selector.crosshairs) != sample_ref.shape[1]:
         print(
             f'Selected {len(selector.crosshairs)} but have values for '
@@ -267,7 +341,6 @@ def build_and_save_autolinearizer(corners: np.ndarray, t: int,
         )
         return
 
-    camera_sense = load_csv(config['camera_path'])
     pred_qc = sample_ref.T.dot(camera_sense)
 
     autoline_op = v2v.AutoLinearize(
@@ -359,11 +432,18 @@ def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
         print('At least four tie points must be selected in each image.')
         return None, None
 
-    warp_op = v2v.Warp.build_from_tiepoints(
-        uv_selector.crosshairs,
-        vis_selector.crosshairs,
-        config.image_size,
-    )
+    try:
+        warp_op = v2v.Warp.build_from_tiepoints(
+            uv_selector.crosshairs,
+            vis_selector.crosshairs,
+            config.image_size,
+        )
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return None, None
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return None, None
 
     # The _original_image is in uint8, so will need to be rescaled prior to and
     # after the warp.
@@ -403,8 +483,13 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
             print(f'Please specify {PARAM_CAPTIONS[k].lower()}')
             return
 
-    sample_ref = load_csv(config['linearization_values_path'])
-    camera_sense = load_csv(config['camera_path'])
+    try:
+        sample_ref = load_csv(config['linearization_values_path'])
+        camera_sense = load_csv(config['camera_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
+
     expected_values = sample_ref.T.dot(camera_sense)
 
     vis_samples, vis_drop = vis_selector.get_samples()
@@ -495,7 +580,13 @@ def create_record(line_op: v2v.ElementwiseOperator,
         print(err.args[0])
         return
 
-    sample_ref = load_csv(config['linearization_values_path'])
+    try:
+        sample_ref = load_csv(config['linearization_values_path'])
+        camera_sense = load_csv(config['camera_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
+
     sample_ref = sample_ref[:, keep]
     is_train = np.ones(sample_ref.shape[1], dtype=bool)
 
@@ -510,14 +601,18 @@ def create_record(line_op: v2v.ElementwiseOperator,
         except RuntimeError as err:
             print(err.args[0])
             return
-        test_sample_ref = load_csv(config['test_values_path'])
+        try:
+            test_sample_ref = load_csv(config['test_values_path'])
+        except FileNotFoundError as err:
+            print(f'Could not find {err.args[0]} - please check path.')
+            return
+
         samples = np.concatenate((samples, test_samples), axis=0)
         sample_ref = np.concatenate((sample_ref, test_sample_ref), axis=1)
         is_train = np.concatenate(
             (is_train, np.zeros(test_samples.shape[0], dtype=bool)), axis=0
         )
 
-    camera_sense = load_csv(config['camera_path'])
     expected_camera_values = sample_ref.T.dot(camera_sense)
     linearized_values = line_op.apply_values(samples)
 
@@ -536,9 +631,13 @@ def create_record(line_op: v2v.ElementwiseOperator,
         config[k] is not None
         for k in ['animal_sensitivity_path', 'sense_converter_path']
     ):
-        animal_sense = load_csv(config['animal_sensitivity_path'])
+        try:
+            animal_sense = load_csv(config['animal_sensitivity_path'])
+            sense_converter = load_operator(config['sense_converter_path'])
+        except FileNotFoundError as err:
+            print(f'Could not find {err.args[0]} - please check path.')
+            return
         expected_animal_values = sample_ref.T.dot(animal_sense)
-        sense_converter = load_operator(config['sense_converter_path'])
         converted_values = linearized_values.dot(sense_converter.mat)
         n_c = animal_sense.shape[1]
         out += (list(expected_animal_values.T) + list(converted_values.T))
@@ -578,8 +677,15 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
         print('Please select samples before performing evaluation.')
         return None, None, None, None
 
-    sample_ref = load_csv(values_path)
-    animal_sense = load_csv(config['animal_sensitivity_path'])
+    try:
+        sample_ref = load_csv(values_path)
+        animal_sense = load_csv(config['animal_sensitivity_path'])
+        sense_converter = load_operator(config['sense_converter_path'])
+        camera_sense = load_csv(config['camera_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return None, None, None, None
+
     expected_values = sample_ref.T.dot(animal_sense)
 
     try:
@@ -592,11 +698,9 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
 
     sample_ref, expected_values = sample_ref[:, keep], expected_values[keep]
     linearized_values = line_op.apply_values(samples)
-    sense_converter = load_operator(config['sense_converter_path'])
     converted_values = linearized_values.dot(sense_converter.mat)
     n_bands = animal_sense.shape[1]
 
-    camera_sense = load_csv(config['camera_path'])
     colors = np.clip(sample_ref.T.dot(camera_sense), 0, 1)[:, 1:][:, ::-1]
 
     table = list(zip(
@@ -632,8 +736,13 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
         print('Please select samples before performing evaluation.')
         return None, None, None, None
 
-    sample_ref = load_csv(values_path)
-    camera_sense = load_csv(config['camera_path'])
+    try:
+        sample_ref = load_csv(values_path)
+        camera_sense = load_csv(config['camera_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return None, None, None, None
+
     expected_values = sample_ref.T.dot(camera_sense)
 
     try:
@@ -669,6 +778,9 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
         loader = get_loader('vis_path')
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
+        return None, None, None
+    except FileNotFoundError:
+        print('Could not find input images. Please check visible input path.')
         return None, None, None
 
     for t in range(len(loader)):
@@ -725,14 +837,28 @@ def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \
             print('Linearization operator must be built before linearization')
             return
 
-    line_pipe = v2v.load_pipeline(config['align_pipe_path'])
+    try:
+        line_pipe = v2v.load_pipeline(config['align_pipe_path'])
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
+
     align_idx, = (
         i for i in line_pipe.nodes
         if isinstance(line_pipe.nodes[i]['operator'], v2v.AutoAlign)
     )
     align_op = line_pipe.nodes[align_idx]['operator']
     align_op.coe = config['coe']
-    align_op.output_size = config.image_size
+
+    try:
+        align_op.output_size = config.image_size
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
+
     align_op._concatenate.bands = [[2], [0, 1, 2]]
     if isinstance(align_op, v2v.AutoTemporalAlign):
         align_op.time_shift = 0
@@ -747,8 +873,13 @@ def make_example_linearization_images(line_op: v2v.ElementwiseOperator) \
     line_pipe.add_edge(align_idx, line_idx, in_slot=0)
     line_pipe.add_edge(line_idx, write_idx, in_slot=0)
 
-    vis_image = get_loader('vis_path').get_frame(max(config['shift'], 0))
-    uv_image = get_loader('uv_path').get_frame(max(-config['shift'], 0))
+    try:
+        vis_image = get_loader('vis_path').get_frame(max(config['shift'], 0))
+        uv_image = get_loader('uv_path').get_frame(max(-config['shift'], 0))
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
+
     image = line_pipe(uv_image, vis_image)
 
     return make_displayable(image[..., :1], image[..., 1:])
@@ -774,10 +905,14 @@ def make_final_displaybox() -> DisplayBox:
             *loaders, get_loader('human_out_path'),
             output_size=0.25,
         )
-    except FileNotFoundError as err:
-        print(f'Could not find file {err.args[0]}; please check paths')
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
 
 
 def make_ghostbox() -> GhostBox:
@@ -827,7 +962,6 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
     config = get_config()
 
     align_pipe = auto_op = None
-    shift = 0
 
     try:
         if require_alignment:
@@ -836,8 +970,6 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
             if (config['coe'] is None) or (config['shift'] is None):
                 print('Alignment must be run first.')
                 return
-
-            shift = get_shift(which)
 
             auto_key = f"{which.split('_')[1]}_auto_op_path"
             auto_op = config[auto_key]
@@ -865,3 +997,9 @@ def make_selectorbox(which: str, copy_from: Optional[SelectorBox] = None,
 
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
+    except ImportError as err:
+        print(f'{err.args[0]} Please install the module and try again.')
+        return
+    except FileNotFoundError as err:
+        print(f'Could not find {err.args[0]} - please check path.')
+        return
