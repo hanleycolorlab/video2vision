@@ -7,6 +7,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from typing import Any, Optional, Type, Union
 import unittest
 
@@ -194,6 +195,12 @@ class ConfigTest(unittest.TestCase):
             Image.fromarray(image).save(path)
             self.assertEqual(v2v_nb.config._get_size(path), (10, 8))
             image = np.zeros((9, 10, 3), dtype=np.uint8)
+            # We need this sleep here because there's a minimum resolution in
+            # the modification time for files, and the modification time is
+            # used in _get_size to determine whether to keep the cached value
+            # or not. For details, see:
+            # https://stackoverflow.com/questions/19059877/python-os-path-getmtime-time-not-changing  noqa
+            time.sleep(2)
             Image.fromarray(image).save(path)
             self.assertEqual(v2v_nb.config._get_size(path), (10, 9))
 
