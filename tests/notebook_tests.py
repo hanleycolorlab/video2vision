@@ -1260,6 +1260,40 @@ class ProcessingTest(unittest.TestCase):
             line_op = v2v_nb.build_linearizer(selector_box, selector_box)
             self.assertTrue(isinstance(line_op, v2v.PowerLaw))
 
+    def test_build_linearizer_normalize_only(self):
+        config = v2v_nb.get_config()
+        v2v_nb.clear_all()
+
+        config['is_sony_camera'] = False
+        config['normalize_only'] = True
+
+        with self.with_image() as (loader, _):
+            with tempfile.TemporaryDirectory() as temp_root:
+                cam_path = os.path.join(temp_root, 'camera.csv')
+                config['camera_path'] = cam_path
+                _create_dummy_csv(cam_path, 1. / 401.)
+
+                sample_path = os.path.join(temp_root, 'samples.csv')
+                config['linearization_values_path'] = sample_path
+                samples = np.array([0., 0.25, 0.125, 0.5])
+                samples = np.stack([samples] * 401, axis=0)
+                _create_dummy_csv(sample_path, samples)
+
+                selector_box = v2v_nb.SelectorBox(
+                    loader, w=1, border_margin=0, output_size=(8, 8),
+                )
+                selector_box.idxs = [0, 1, 2, 3]
+                selector_box.crosshairs = [(1, 1), (1, 7), (7, 1), (7, 7)]
+                selector_box.crosshair_type = [0, 0, 0, 0]
+
+                line_op = v2v_nb.build_linearizer(selector_box, selector_box)
+
+        self.assertTrue(isinstance(line_op, v2v.Polynomial))
+        for poly in line_op.funcs:
+            self.assertEqual(len(poly.coef), 2)
+            self.assertTrue(abs(poly.coef[0] - 0.0) < 0.01)
+            self.assertTrue(abs(poly.coef[1] - 0.5) < 0.01)
+
     def test_create_record(self):
         config = v2v_nb.get_config()
         v2v_nb.clear_all()

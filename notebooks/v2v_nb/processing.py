@@ -501,10 +501,14 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
 
     samples = np.concatenate((uv_samples[:, 2:], vis_samples), axis=1)
     samples = samples[~vis_drop]
+    expected_values = expected_values[~vis_drop]
 
-    expected_values = sample_ref.T.dot(camera_sense)
+    if config['normalize_only']:
+        line_op = v2v.build_linearizer(
+            samples, expected_values, method='poly', order=1,
+        )
 
-    if config['is_sony_camera']:
+    elif config['is_sony_camera']:
         line_op = v2v.PowerLaw([
             [0.0047058172145495476, 4185.031519941784, -0.01,
              0.16736099187966763],
