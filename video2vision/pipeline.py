@@ -163,8 +163,15 @@ class Pipeline(nx.DiGraph):
         Args:
             path (str): Path to serialized :class:`Pipeline`.
         '''
-        with open(path, 'r') as in_file:
-            graph = json.load(in_file)
+        # This try-except block improves error handling. If path does not
+        # exist, then a FileNotFoundError is raised, but its args do not
+        # specify the file that was not found, confusing our upstream error
+        # reporting.
+        try:
+            with open(path, 'r') as in_file:
+                graph = json.load(in_file)
+        except FileNotFoundError:
+            raise FileNotFoundError(path)
 
         pipe = cls()
 
