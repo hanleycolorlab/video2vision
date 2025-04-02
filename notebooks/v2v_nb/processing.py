@@ -530,9 +530,17 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
             line_op.funcs[band].shift *= scale
 
     else:
-        line_op = v2v.build_linearizer(
-            samples, expected_values, method='power'
-        )
+        try:
+            # This will raise a RuntimeError if it fails to converge.
+            line_op = v2v.build_linearizer(
+                samples, expected_values, method='power'
+            )
+        except RuntimeError:
+            print(
+                'The linearization failed to converge. Please check config '
+                'settings.'
+            )
+            return
 
     if config.use_cache:
         with open(cache_path, 'w') as cache_file:
