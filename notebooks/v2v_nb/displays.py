@@ -94,7 +94,7 @@ class DisplayBox(widgets.VBox):
         '''
         with self.buttons.disable():
             images = [
-                r.get_frame(t + s, noscale=True)
+                r.get_frame(t + s, for_display=True)
                 for r, s in zip(self.loaders, self.shifts)
             ]
             self.set_images(*images)
@@ -108,7 +108,7 @@ class DisplayBox(widgets.VBox):
 
         x = 0
         for image in images:
-            # Convert from BGR, float32, [0, 1] to RGB, uint8, [0, 255]
+            # Convert from BGR, float32 to RGB, uint8
             if (image.ndim == 3) and (image.shape[2] == 3):
                 image = image[:, :, ::-1]
             elif image.shape[2] == 1:
@@ -474,7 +474,9 @@ class SelectorBox(DisplayBox):
         '''
         with self.buttons.disable():
             self.t = t
-            image = self.loaders[0].get_frame(t + self.shifts[0], noscale=True)
+            image = self.loaders[0].get_frame(
+                t + self.shifts[0], for_display=True
+            )
 
             if not noauto:
                 self._autofind_crosshairs(image)

@@ -796,7 +796,7 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
         return None, None, None
 
     for t in range(len(loader)):
-        frame = loader.get_frame(t, noscale=True)
+        frame = loader.get_frame(t, for_display=True)
 
         try:
             # NOTE: locate_aruco_markers is capable of batch processing, but

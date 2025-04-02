@@ -41,25 +41,27 @@ _IMAGE_EXTENSIONS = [
 ]
 
 
-def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
-        -> np.ndarray:
+def load(path: str, out: Optional[np.ndarray] = None,
+         for_display: bool = False) -> np.ndarray:
     '''
     Convenience function for loading images from disk. Dispatches to
-    appropriate backend.
+    appropriate backend. Images will be converted to 32-bit floating point
+    numbers scaled to [0, 1] before being returned.
 
     Args:
         path (str): Path to image to load.
         out (optional, :class:`numpy.ndarray`): If provided, this is the buffer
             to load the image into.
-        noscale (bool): If true, return the image in its original dtype and
-            scale instead of a 32-bit floating point array scaled from [0, 1].
-            At present, if noscale is turned on, then the out argument is
-            ignored.
+        for_display (bool): This is used to indicate that the image is needed
+            for display, rather than for analysis. The image will be returned
+            scaled [0, 255] instead of [0, 1]. In addition, if the image's
+            original dtype is uint8, it will be left as uint8, whereas
+            otherwise it will be coerced to float32.
     '''
     # Some of the function calls below don't raise an error if the file doesn't
     # exist, they just fail silently. So let's check explicitly.
 
-    # TODO: Make out argument work with noscale
+    # TODO: Make out argument work with uint8
     if not os.path.exists(path):
         raise FileNotFoundError(path)
 
@@ -68,12 +70,12 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
             raise ImportError('tifffile is needed to read tif files')
         image = tifffile.imread(path)
         # Rescale to [0, 1] and float32
-        if not noscale:
+        if not for_display:
             image = _convert_and_scale_uint8(image, out=out)
 
     elif path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
-        frames, ret, t = [], True, 0
+        frames, ret = [], True
         while ret and reader.isOpened():
             ret, frame = reader.read()
             if ret:
@@ -81,7 +83,7 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
         reader.release()
         image = np.stack(frames, axis=2)
         # Rescale to [0, 1] and float32
-        if not noscale:
+        if not for_display:
             image = _convert_and_scale_uint8(image, out=out)
 
     elif path.lower().endswith(('.arw', '.nef')):
@@ -105,7 +107,7 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
                 raw_file.camera_white_level_per_channel[2],
             ])
 
-        if not noscale:
+        if not for_display:
             # Rescales to [0, 1] and float32
             image = image.astype(np.float32)
             image = np.divide(
@@ -113,6 +115,13 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
                 white_level.reshape(1, 1, 3),
                 None if (out is None) else out[:, :, ::-1],
             )
+        elif image.dtype != np.uint8:
+            # Unlike other file types, RAW will generally NOT be in uint8 on
+            # disk. Instead, int16 is more common, in which case it still needs
+            # to be scaled.
+            image = image.astype(np.float32)
+            image *= (256. / white_level.reshape(1, 1, -3))
+
         # Reverse channels from RGB to BGR
         image = image[:, :, ::-1]
 
@@ -122,7 +131,7 @@ def load(path: str, out: Optional[np.ndarray] = None, noscale: bool = False) \
         if image is None:
             raise RuntimeError(f'Image {path} could not be read')
         # Rescale to [0, 1] and float32
-        if not noscale:
+        if not for_display:
             image = _convert_and_scale_uint8(image, out=out)
 
     return _coerce_to_image(image)
@@ -314,15 +323,17 @@ class Loader(Operator):
             'final': (self.t >= len(self)),
         }
 
-    def get_frame(self, t: int, noscale: bool = False) -> np.ndarray:
+    def get_frame(self, t: int, for_display: bool = False) -> np.ndarray:
         '''
         Retrieves a single frame and returns it.
 
         Args:
             t (int): Index of the frame to retrieve.
-            noscale (bool): If true, do not coerce the input to a 32-bit
-                floating point number scaled from [0, 1]; instead, return it in
-                its original dtype and scale.
+            for_display (bool): This is used to indicate that the image is
+                needed for display, rather than for analysis. The image will be
+                returned scaled [0, 255] instead of [0, 1]. In addition, if the
+                image's original dtype is uint8, it will be left as uint8,
+                whereas otherwise it will be coerced to float32.
         '''
         if _READ_WRITE_FROM_TO_BUFFER:
             return self.buff[t]
@@ -340,11 +351,11 @@ class Loader(Operator):
 
         if reader is None:
             # load handles rescaling for us
-            image = load(path, noscale=noscale)
+            image = load(path, for_display=for_display)
         else:
             reader.set(cv2.CAP_PROP_POS_FRAMES, t)
             _, image = reader.read()
-            if not noscale:
+            if not for_display:
                 image = _convert_and_scale_uint8(image)
 
         self._check_size(image)

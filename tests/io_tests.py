@@ -38,9 +38,9 @@ class IOTest(unittest.TestCase):
         self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
         self.assertTrue((np.abs(out[:8, 0, 2] - should_be) < 1e-7).all())
 
-        image = v2v.load(path, noscale=True)
-        should_be = np.array([456, 456, 474, 492, 493, 494, 494, 494])
-        self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
+        image = v2v.load(path, for_display=True)
+        should_be = (should_be * 256)
+        self.assertTrue(np.isclose(image[:8, 0, 2], should_be).all())
 
     def test_load_and_save(self):
         '''
@@ -91,14 +91,14 @@ class IOTest(unittest.TestCase):
                     self.assertTrue(_is_close(rtn, image))
                     self.assertTrue(_is_close(rtn, out))
 
-    def test_load_noscale(self):
+    def test_load_uint8(self):
         with tempfile.TemporaryDirectory() as temp_root:
             temp_path = os.path.join(temp_root, 'test.png')
             image = np.zeros((8, 8, 3), dtype=np.float32)
             image[4:, :4], image[:4, 4:], image[4:, 4:] = 0.2, 0.5, 0.7
             v2v.save(image, temp_path)
 
-            rtn = v2v.load(temp_path, noscale=True)
+            rtn = v2v.load(temp_path, for_display=True)
             self.assertEqual(rtn.dtype, np.uint8)
             self.assertEqual(rtn.shape, (8, 8, 3))
             self.assertTrue(_is_close(rtn, (256 * image)))
@@ -427,7 +427,7 @@ class IOTest(unittest.TestCase):
             for t in range(5):
                 frame = loader.get_frame(t)
                 self.assertTrue(_is_close(frame, video[:, :, t % 3]), t)
-                frame = loader.get_frame(t, noscale=True)
+                frame = loader.get_frame(t, for_display=True)
                 self.assertTrue(
                     _is_close(frame, (256 * video[:, :, t % 3]))
                 )
