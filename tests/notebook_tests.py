@@ -858,7 +858,7 @@ class ProcessingTest(unittest.TestCase):
 
             for k in ['align_pipe_path', 'uv_path', 'vis_path']:
                 config[k], was_path = 'nonexistent_path.jpg', config[k]
-                with self.assert_prints('Could not find file'):
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.build_and_run_alignment_pipeline()
                 config[k] = was_path
 
@@ -1011,7 +1011,7 @@ class ProcessingTest(unittest.TestCase):
                 'sense_converter_path', 'animal_sensitivity_path',
             ]:
                 config[k], was_path = 'nonexistent_path.jpg', config[k]
-                with self.assert_prints('Could not find'):
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.build_and_run_full_pipeline(line_op)
                 config[k] = was_path
 
@@ -1052,7 +1052,7 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.build_and_save_alignment_pipeline(warp_op)
 
             config['vis_path'] = 'nonexistent_path.jpg'
-            with self.assert_prints('Could not find'):
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.build_and_save_alignment_pipeline(warp_op)
 
             with self.with_image(as_loader=False) as (path, _):
@@ -1100,7 +1100,7 @@ class ProcessingTest(unittest.TestCase):
                 auto_op_path = os.path.join(temp_root, 'autolinearizer.json')
                 config['save_auto_op_path'] = auto_op_path
                 config['linearization_values_path'] = 'nonexistent.csv'
-                with self.assert_prints('Could not find file'):
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.build_and_save_autolinearizer(corners, t, selector)
                 config['linearization_values_path'] = lin_val_path
 
@@ -1156,12 +1156,11 @@ class ProcessingTest(unittest.TestCase):
             ref = np.random.uniform(0, 1, (401, 20))
             _create_dummy_csv(config['reflectivity_path'], ref)
 
-            temp_path = os.path.join(temp_root, 'temp.csv')
             for k in [
                 'camera_path', 'animal_sensitivity_path', 'reflectivity_path',
             ]:
-                temp, config[k] = config[k], temp_path
-                with self.assert_prints('Could not find'):
+                temp, config[k] = config[k], 'nonexistent.csv'
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.build_and_save_sense_converter()
                 config[k] = temp
 
@@ -1204,7 +1203,7 @@ class ProcessingTest(unittest.TestCase):
             uv_selector.crosshairs = [(0, 32), (0, 0), (32, 0), (32, 32)]
 
             config['vis_path'] = 'nonexistent.jpg'
-            with self.assert_prints('Could not find'):
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.build_coarse_warp(vis_selector, uv_selector)
             config['vis_path'] = path
 
@@ -1266,7 +1265,7 @@ class ProcessingTest(unittest.TestCase):
 
             for k in ['camera_path', 'linearization_values_path']:
                 v, config[k] = config[k], 'nonexistent.csv'
-                with self.assert_prints('Could not find'):
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.build_linearizer(selector_box, selector_box)
                 config[k] = v
 
@@ -1340,13 +1339,16 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.create_record(
                     line_op, selector, selector, None, None,
                 )
-            config['linearization_values_path'] = os.path.join(
-                temp_root, 'values.csv'
-            )
-            with self.assert_prints('Could not find'):
+
+            config['linearization_values_path'] = 'nonexistent.csv'
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.create_record(
                     line_op, selector, selector, None, None,
                 )
+
+            config['linearization_values_path'] = os.path.join(
+                temp_root, 'values.csv'
+            )
             values = np.linspace(0, 1, 401)
             wl = np.arange(300, 701, 1)
             out = np.stack((wl, values, 0.5 + 0.5 * values), axis=1)
@@ -1358,13 +1360,16 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.create_record(
                     line_op, selector, selector, None, None,
                 )
-            config['camera_path'] = os.path.join(
-                temp_root, 'camera.csv'
-            )
-            with self.assert_prints('Could not find'):
+
+            config['camera_path'] = 'nonexistent.csv'
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.create_record(
                     line_op, selector, selector, None, None,
                 )
+
+            config['camera_path'] = os.path.join(
+                temp_root, 'camera.csv'
+            )
             camera = np.full((401,), 1. / 401)
             out = np.stack([wl] + [camera] * 4, axis=1)
             np.savetxt(
@@ -1488,7 +1493,7 @@ class ProcessingTest(unittest.TestCase):
                 'camera_path'
             ]:
                 v, config[k] = config[k], 'nonexistent.csv'
-                with self.assert_prints('Could not find'):
+                with self.assert_prints("Could not find nonexistent"):
                     v2v_nb.evaluate_conversion(
                         line_op, values_path, selector_box, selector_box,
                     )
@@ -1533,7 +1538,7 @@ class ProcessingTest(unittest.TestCase):
                     line_op, values_path, selector_box, selector_box,
                 )
             config['camera_path'] = 'nonexistent.csv'
-            with self.assert_prints('Could not find'):
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.evaluate_samples(
                     line_op, values_path, selector_box, selector_box,
                 )
@@ -1563,7 +1568,7 @@ class ProcessingTest(unittest.TestCase):
             v2v_nb.find_and_draw_aruco_markers()
 
         config['vis_path'] = 'nonexistent.jpg'
-        with self.assert_prints('Could not find'):
+        with self.assert_prints("Could not find nonexistent"):
             v2v_nb.find_and_draw_aruco_markers()
 
         config['vis_path'] = os.path.join(
@@ -1626,7 +1631,7 @@ class ProcessingTest(unittest.TestCase):
 
         for k in ['align_pipe_path', 'uv_path', 'vis_path']:
             v, config[k] = config[k], 'nonexistent.jpg'
-            with self.assert_prints('Could not find'):
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.make_example_linearization_images(line_op)
             config[k] = v
 
@@ -1650,8 +1655,8 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.make_final_displaybox()
                 config[k] = v
 
-            config['animal_out_path'] = 'asd'
-            with self.assert_prints('Could not find'):
+            config['animal_out_path'] = 'nonexistent'
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.make_final_displaybox()
             config['animal_out_path'] = path
 
@@ -1690,11 +1695,11 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.make_final_displaybox()
                 config[k] = v
 
-            config['animal_out_path'] = 'asd'
+            config['animal_out_path'] = 'nonexistent.csv'
             config['align_pipe_path'] = os.path.join(
                 os.path.dirname(__file__), 'data/pipeline.json'
             )
-            with self.assert_prints('Could not find'):
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.make_final_displaybox()
             config['animal_out_path'] = animal_path
 
@@ -1719,8 +1724,8 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.make_ghostbox()
                 config[k] = v
 
-            config['vis_path'] = 'asd'
-            with self.assert_prints('Could not find file'):
+            config['vis_path'] = 'nonexistent.jpg'
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.make_ghostbox()
             config['vis_path'] = path
 
@@ -1744,8 +1749,8 @@ class ProcessingTest(unittest.TestCase):
                     v2v_nb.make_initial_displaybox()
                 config[k] = v
 
-            config['vis_path'] = 'asd'
-            with self.assert_prints('Could not find file'):
+            config['vis_path'] = 'nonexistent.jpg'
+            with self.assert_prints("Could not find nonexistent"):
                 v2v_nb.make_initial_displaybox()
             config['vis_path'] = path
 
@@ -1783,7 +1788,7 @@ class ProcessingTest(unittest.TestCase):
                     config[k] = v
 
                     config['vis_test_path'] = 'nonexistent.jpeg'
-                    with self.assert_prints('Could not find', k):
+                    with self.assert_prints("Could not find nonexistent"):
                         v2v_nb.make_selectorbox('vis_test_path')
 
 

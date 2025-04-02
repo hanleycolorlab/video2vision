@@ -292,7 +292,7 @@ class Loader(Operator):
                 raise OutOfInputs('Buffer is empty')
 
         if len(self) == 0:
-            raise FileNotFoundError(self.paths)
+            raise FileNotFoundError(self.original_path)
 
         # We arrange the buffer in order THWC instead of the usual order HWTC,
         # because this reduces the time required to copy frames in by a factor
@@ -345,7 +345,7 @@ class Loader(Operator):
                 break
         else:
             if n_frames == 0:
-                raise FileNotFoundError(self.paths)
+                raise FileNotFoundError(self.original_path)
             else:
                 raise ValueError(f'{t} out of range: {len(self)}')
 
@@ -383,8 +383,11 @@ class Loader(Operator):
         Sets the input path.
         '''
         if paths is None:
-            self.paths, self._readers = None, []
+            self.original_path, self.paths, self._readers = None, None, []
         else:
+            # We use original_paths to hold the value passed by the user, for
+            # error-reporting purposes.
+            self.original_path = paths
             self.paths, self._readers = [], []
             if isinstance(paths, str):
                 paths = [paths]

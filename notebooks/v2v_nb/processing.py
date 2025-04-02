@@ -54,7 +54,7 @@ def build_and_run_alignment_pipeline():
         config._image_size = align_pipe.get_loaders()[0].expected_size
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -88,7 +88,7 @@ def build_and_run_alignment_pipeline():
         align_op.output_size = config.image_size
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -123,7 +123,7 @@ def build_and_run_alignment_pipeline():
             return
         except FileNotFoundError as err:
             print(
-                f'Could not find file {err.args[0]}. Please correct config and try'
+                f'Could not find {err.args[0]}. Please correct config and try'
                 f' again.'
             )
             return
@@ -165,7 +165,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         full_pipe = v2v.load_pipeline(config['align_pipe_path'])
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -184,7 +184,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         return
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -208,7 +208,7 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         sense_converter = load_operator(config['sense_converter_path'])
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -238,8 +238,11 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
             'containing both RAW and JPEG images.)'
         )
         return
-    except FileNotFoundError:
-        print('Could not find image files. Please check visible and UV paths.')
+    except FileNotFoundError as err:
+        print(
+            f'Could not find {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
         return
 
     print('Pipeline complete')
@@ -285,8 +288,11 @@ def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
     except ImportError as err:
         print(f'{err.args[0]} Please install the module and try again.')
         return
-    except FileNotFoundError:
-        print('Could not find images; please check visible input path.')
+    except FileNotFoundError as err:
+        print(
+            f'Could not find {err.args[0]}. Please correct config and try'
+            f' again.'
+        )
         return
 
     coarse_align_idx = pipe.add_operator(warp_op)
@@ -329,7 +335,7 @@ def build_and_save_autolinearizer(corners: np.ndarray, t: int,
         camera_sense = load_csv(config['camera_path'])
     except FileNotFoundError as err:
         print(
-            f'Could not find file {err.args[0]}. Please correct config and try'
+            f'Could not find {err.args[0]}. Please correct config and try'
             f' again.'
         )
         return
@@ -572,7 +578,10 @@ def create_record(line_op: v2v.ElementwiseOperator,
         )
         return
     if not os.path.exists(config['linearization_values_path']):
-        print('Could not find training sample values.')
+        print(
+            f"Could not find {config['linearization_values_path']}. Please "
+            f"correct config and try again."
+        )
         return
     if config['camera_path'] is None:
         print(
@@ -581,7 +590,10 @@ def create_record(line_op: v2v.ElementwiseOperator,
         )
         return
     if not os.path.exists(config['camera_path']):
-        print('Could not find camera sensitivities.')
+        print(
+            f"Could not find {config['camera_path']}. Please correct config "
+            f"and try again."
+        )
         return
 
     try:
@@ -791,8 +803,10 @@ def find_and_draw_aruco_markers() -> Tuple[np.ndarray, int, Image.Image]:
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
         return None, None, None
-    except FileNotFoundError:
-        print('Could not find input images. Please check visible input path.')
+    except FileNotFoundError as err:
+        print(
+            f'Could not find {err.args[0]}. Please check config and try again.'
+        )
         return None, None, None
 
     for t in range(len(loader)):
@@ -942,7 +956,7 @@ def make_ghostbox() -> GhostBox:
             output_size=0.5,
         )
     except FileNotFoundError as err:
-        print(f'Could not find file {err.args[0]}; please check paths')
+        print(f'Could not find {err.args[0]}; please check paths')
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
 
@@ -963,7 +977,7 @@ def make_initial_displaybox() -> DisplayBox:
             output_size=0.15,
         )
     except FileNotFoundError as err:
-        print(f'Could not find file {err.args[0]}; please check paths')
+        print(f'Could not find {err.args[0]}; please check paths')
     except ParamNotSet as err:
         print(f'Please specify {PARAM_CAPTIONS[err.args[0]].lower()}.')
 

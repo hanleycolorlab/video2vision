@@ -119,7 +119,13 @@ def get_shift(which: str) -> int:
 
 
 def load_csv(path: str) -> np.ndarray:
-    out = np.genfromtxt(path, skip_header=True, delimiter=',')
+    # This try-except block just makes things a bit prettier, but ensuring the
+    # args of the error have the specific desired form.
+    try:
+        out = np.genfromtxt(path, skip_header=True, delimiter=',')
+    except FileNotFoundError:
+        raise FileNotFoundError(path)
+
     out = out[:, 1:]
     if out.max() > 2:
         out /= 100
@@ -127,8 +133,15 @@ def load_csv(path: str) -> np.ndarray:
 
 
 def load_operator(path: str) -> v2v.Operator:
-    with open(path, 'r') as op_file:
-        x = json.load(op_file)
+    # This try-except guard is used to improve the comprehensibility of the
+    # error: calling open('nonexistent.json') does raise a FileNotFoundError,
+    # but its args do not include the path of the file that doesn't exist.
+    try:
+        with open(path, 'r') as op_file:
+            x = json.load(op_file)
+    except FileNotFoundError:
+        raise FileNotFoundError(path)
+
     op_cls = v2v.OPERATOR_REGISTRY.get(x.pop('class'))
     return op_cls(**x)
 
