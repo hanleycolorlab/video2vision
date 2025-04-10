@@ -162,6 +162,9 @@ def make_displayable(*images: np.ndarray) -> Image:
             image = np.clip(256 * image, 0, 255).astype(np.uint8)
         if (image.ndim == 3) and (image.shape[2] == 1):
             image = image.reshape(*image.shape[:2])
+        elif (image.ndim == 3) and (image.shape[2] == 3):
+            # BGR -> RGB
+            image = image[:, :, ::-1]
         fmt = 'L' if (image.ndim == 2) else 'RGB'
         image = Image.fromarray(image, fmt)
         display_image.paste(image, (x, 0))
