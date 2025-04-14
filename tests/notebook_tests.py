@@ -454,7 +454,7 @@ class DisplayTest(unittest.TestCase):
         should_be = np.array(
             [[0.02473958, 0.0625, 0.0296875]], dtype=np.float32
         )
-        self.assertTrue(np.isclose(samples, should_be).all())
+        self.assertTrue(np.isclose(samples, should_be).all(), samples)
 
     def test_selector_box_make_crosshairs(self):
         with self.with_images() as loader:
@@ -478,7 +478,7 @@ class DisplayTest(unittest.TestCase):
 
         with self.with_images() as loader:
             selector_box = v2v_nb.SelectorBox(
-                loader, output_size=(4, 4), align_pipeline=align_pipe,
+                loader, output_size=(4, 4), align_pipeline=align_pipe, w=1,
             )
             display_image = np.array(selector_box.display)
             self.assertEqual(display_image.shape, (4, 4, 3))
@@ -489,6 +489,14 @@ class DisplayTest(unittest.TestCase):
             self.assertEqual(display_image.shape, (4, 4, 3))
             self.assertTrue((display_image[0, 3] == 64).all())
             self.assertTrue((display_image[mask] == 0).all())
+
+            selector_box.crosshairs = [(7, 0), (0, 2)]
+            selector_box.crosshair_type = [True, True]
+            selector_box.idxs = [0, 1]
+
+            samples, _ = selector_box.get_samples()
+            should_be = np.array([[1., 1., 1.], [0., 0., 0.]])
+            self.assertTrue((np.abs(samples - should_be) < 0.01).all())
 
     def test_selector_box_with_monochrome(self):
         with self.with_images(rgb=False) as loader:
@@ -1298,13 +1306,14 @@ class ProcessingTest(unittest.TestCase):
                 selector_box.crosshairs = [(1, 1), (1, 7), (7, 1), (7, 7)]
                 selector_box.crosshair_type = [0, 0, 0, 0]
 
+                samples, _ = selector_box.get_samples()
                 line_op = v2v_nb.build_linearizer(selector_box, selector_box)
 
         self.assertTrue(isinstance(line_op, v2v.Polynomial))
         for poly in line_op.funcs:
             self.assertEqual(len(poly.coef), 2)
             self.assertTrue(abs(poly.coef[0] - 0.0) < 0.01)
-            self.assertTrue(abs(poly.coef[1] - 0.5) < 0.01)
+            self.assertTrue(abs(poly.coef[1] - 0.5) < 0.01, poly.coef)
 
     def test_create_record(self):
         config = v2v_nb.get_config()

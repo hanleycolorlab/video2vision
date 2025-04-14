@@ -11,8 +11,8 @@ import numpy as np
 _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
-    'detect_motion', 'extract_samples', 'get_photoreceptor_template',
-    'locate_aruco_markers', 'read_jazirrad_file'
+    'detect_motion', 'extract_samples', 'gamma_scale',
+    'get_photoreceptor_template', 'locate_aruco_markers', 'read_jazirrad_file'
 ]
 
 
@@ -311,6 +311,14 @@ def _evaluate_ecc_for_warp(template: Dict, image: Dict) -> float:
                 eccs.append(ecc)
 
     return mean(eccs)
+
+
+def gamma_scale(image: np.ndarray, t: float = 2.2) -> np.ndarray:
+    '''
+    Performs gamma scaling on an image prior to display. This also has the
+    effect of coercing the image to a floating point dtype.
+    '''
+    return np.clip(image.astype(np.float32), 1e-6, 1) ** t
 
 
 def get_photoreceptor_template(peak: float,

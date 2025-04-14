@@ -451,9 +451,16 @@ def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
         print(f'Could not find {err.args[0]} - please check path.')
         return None, None
 
-    # The _original_image is in uint8, so will need to be rescaled prior to and
-    # after the warp.
-    uv_image = uv_selector._original_image.astype(np.float32) / 256.
+    # We need to use for_display here, in order to apply gamma scaling to ARW
+    # images. This should be fine because we're only applying perspective
+    # operations here, not any operations that might be thrown off by
+    # elementwise preprocessing. However, that means the images will come out
+    # [0, 255] range and possibly uint8, which we need to correct before
+    # passing to the pipeline, then undo afterwards.
+    uv_image = uv_selector.loaders[0].get_frame(
+        uv_selector.t + uv_selector.shifts[0], for_display=True,
+    )
+    uv_image = uv_image.astype(np.float32) / 255
     warped_uv_image = warp_op({'image': uv_image})['image']
     warped_uv_image = np.clip(256 * warped_uv_image, 0, 255).astype(np.uint8)
     # Now resize down to match vis_image
@@ -462,8 +469,10 @@ def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
             warped_uv_image, (uv_selector.w, uv_selector.h)
         )
 
+    # The cached image is already converted from BGR to RGB, but we need to do
+    # that to the warped UV image.
     display_image = np.concatenate(
-        (vis_selector._cached_image, warped_uv_image), axis=1
+        (vis_selector._cached_image, warped_uv_image[:, :, ::-1]), axis=1
     )
 
     return warp_op, Image.fromarray(display_image)

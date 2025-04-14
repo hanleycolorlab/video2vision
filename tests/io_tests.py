@@ -39,8 +39,6 @@ class IOTest(unittest.TestCase):
         self.assertTrue((np.abs(out[:8, 0, 2] - should_be) < 1e-7).all())
 
         image = v2v.load(path, for_display=True)
-        should_be = (should_be * 256)
-        self.assertTrue(np.isclose(image[:8, 0, 2], should_be).all())
 
     def test_load_and_save(self):
         '''

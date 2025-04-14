@@ -329,19 +329,23 @@ class SelectorBox(DisplayBox):
 
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
         if len(self.idxs) == 0:
-            if self._original_image.ndim == 2:
+            if self._cached_image.ndim == 2:
                 n_c = 1
             else:
-                n_c = self._original_image.shape[2]
+                n_c = self._cached_image.shape[2]
             return np.empty((0, n_c)), np.empty((0,), dtype=bool)
 
         if max(self.idxs) + 1 != len(self.idxs):
             raise RuntimeError('Not all samples selected')
 
-        samples = v2v.utils.extract_samples(
-            self._original_image, self.crosshairs, self.sample_size
+        image = self.loaders[0].get_frame(
+            self.t + self.shifts[0], for_display=False,
         )
-        samples = samples / 256.
+        if self.align_pipeline is not None:
+            image = self.align_pipeline(image, np.empty_like(image))
+        samples = v2v.utils.extract_samples(
+            image, self.crosshairs, self.sample_size
+        )
         types = np.array(self.crosshair_type, dtype=bool)
         reidx = [self.idxs.index(i) for i in range(samples.shape[0])]
 
@@ -487,8 +491,6 @@ class SelectorBox(DisplayBox):
             image = image.astype(np.float32) / 256.
             image = self.align_pipeline(image, np.empty_like(image))
             image = np.clip(256 * image, 0, 255).astype(np.uint8)
-        # Cache original image to use in retrieving samples
-        self._original_image = image
 
         if (image.ndim == 3) and (image.shape[2] == 3):
             image = image[:, :, ::-1]
