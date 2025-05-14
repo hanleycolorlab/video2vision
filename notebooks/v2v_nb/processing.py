@@ -332,7 +332,7 @@ def build_and_save_autolinearizer(corners: np.ndarray, t: int,
 
     try:
         sample_ref = load_csv(config['linearization_values_path'])
-        camera_sense = load_csv(config['camera_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
     except FileNotFoundError as err:
         print(
             f'Could not find {err.args[0]}. Please correct config and try'
@@ -377,8 +377,10 @@ def build_and_save_sense_converter() -> Tuple[np.ndarray, np.ndarray, str]:
         return None, None, None
 
     try:
-        camera_sense = load_csv(config['camera_path'])
-        animal_sense = load_csv(config['animal_sensitivity_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
+        animal_sense = load_csv(
+            config['animal_sensitivity_path'], normalize=True
+        )
         reflect = load_csv(config['reflectivity_path'])
     except FileNotFoundError as err:
         print(f'Could not find {err.args[0]} - please check path.')
@@ -500,7 +502,7 @@ def build_linearizer(vis_selector: SelectorBox, uv_selector: SelectorBox) \
 
     try:
         sample_ref = load_csv(config['linearization_values_path'])
-        camera_sense = load_csv(config['camera_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
     except FileNotFoundError as err:
         print(f'Could not find {err.args[0]} - please check path.')
         return
@@ -615,7 +617,7 @@ def create_record(line_op: v2v.ElementwiseOperator,
 
     try:
         sample_ref = load_csv(config['linearization_values_path'])
-        camera_sense = load_csv(config['camera_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
     except FileNotFoundError as err:
         print(f'Could not find {err.args[0]} - please check path.')
         return
@@ -665,7 +667,9 @@ def create_record(line_op: v2v.ElementwiseOperator,
         for k in ['animal_sensitivity_path', 'sense_converter_path']
     ):
         try:
-            animal_sense = load_csv(config['animal_sensitivity_path'])
+            animal_sense = load_csv(
+                config['animal_sensitivity_path'], normalize=True
+            )
             sense_converter = load_operator(config['sense_converter_path'])
         except FileNotFoundError as err:
             print(f'Could not find {err.args[0]} - please check path.')
@@ -712,9 +716,11 @@ def evaluate_conversion(line_op: v2v.ElementwiseOperator,
 
     try:
         sample_ref = load_csv(values_path)
-        animal_sense = load_csv(config['animal_sensitivity_path'])
+        animal_sense = load_csv(
+            config['animal_sensitivity_path'], normalize=True
+        )
         sense_converter = load_operator(config['sense_converter_path'])
-        camera_sense = load_csv(config['camera_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
     except FileNotFoundError as err:
         print(f'Could not find {err.args[0]} - please check path.')
         return None, None, None, None
@@ -771,7 +777,7 @@ def evaluate_samples(line_op: v2v.ElementwiseOperator,
 
     try:
         sample_ref = load_csv(values_path)
-        camera_sense = load_csv(config['camera_path'])
+        camera_sense = load_csv(config['camera_path'], normalize=True)
     except FileNotFoundError as err:
         print(f'Could not find {err.args[0]} - please check path.')
         return None, None, None, None

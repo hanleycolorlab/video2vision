@@ -104,7 +104,7 @@ def get_shift(which: str) -> int:
         return max(-config['shift'], 0)
 
 
-def load_csv(path: str) -> np.ndarray:
+def load_csv(path: str, normalize: bool = False) -> np.ndarray:
     # This try-except block just makes things a bit prettier, but ensuring the
     # args of the error have the specific desired form.
     try:
@@ -113,8 +113,18 @@ def load_csv(path: str) -> np.ndarray:
         raise FileNotFoundError(path)
 
     out = out[:, 1:]
+
     if out.max() > 2:
         out /= 100
+    if normalize:
+        summand = out.sum(0, keepdims=True)
+        if (np.abs(summand - 1) > 1e-2).any():
+            print(
+                f'Columns in {path} do not sum to 1: {summand.flatten()}. '
+                f'Normalizing to 1.'
+            )
+        out /= summand
+
     return out
 
 

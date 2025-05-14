@@ -1159,8 +1159,8 @@ class ProcessingTest(unittest.TestCase):
                 v2v_nb.build_and_save_sense_converter()
             os.remove(config['save_converter_path'])
 
-            _create_dummy_csv(config['camera_path'], 1)
-            _create_dummy_csv(config['animal_sensitivity_path'], 1)
+            _create_dummy_csv(config['camera_path'], 1. / 401)
+            _create_dummy_csv(config['animal_sensitivity_path'], 1. / 401)
             ref = np.random.uniform(0, 1, (401, 20))
             _create_dummy_csv(config['reflectivity_path'], ref)
 
@@ -1177,11 +1177,11 @@ class ProcessingTest(unittest.TestCase):
 
         self.assertTrue(isinstance(cam_s, np.ndarray))
         self.assertEqual(cam_s.shape, (401, 4))
-        self.assertTrue((cam_s == 1).all())
+        self.assertTrue((np.abs(cam_s - (1. / 401)) < 1e-2).all())
 
         self.assertTrue(isinstance(an_s, np.ndarray))
         self.assertEqual(an_s.shape, (401, 4))
-        self.assertTrue((an_s == 1).all())
+        self.assertTrue((np.abs(an_s - (1. / 401)) < 1e-2).all())
 
     def test_build_coarse_warp(self):
         config = v2v_nb.get_config()
@@ -1802,6 +1802,14 @@ class ProcessingTest(unittest.TestCase):
 
 
 class UtilsTest(unittest.TestCase):
+    @contextmanager
+    def assert_prints(self, message: str, extra: Optional[str] = None):
+        buff = io.StringIO()
+        with redirect_stdout(buff):
+            yield
+        disp = f"{buff.getvalue()} {'' if extra is None else extra}"
+        self.assertTrue(buff.getvalue().startswith(message), disp)
+
     def test_coefficient_of_determination(self):
         x = np.random.normal(0, 1, (128,))
         r_2 = v2v_nb.utils.coefficient_of_determination(x, -x)
@@ -1811,6 +1819,38 @@ class UtilsTest(unittest.TestCase):
         x = np.ones(128)
         r_2 = v2v_nb.utils.coefficient_of_determination(x, -x)
         self.assertTrue(isclose(r_2, 1.))
+
+    def test_load_csv(self):
+        values = np.random.uniform(0, 1, (401, 4))
+        values[:, 0] = np.arange(300, 701, 1.)
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, 'test.csv')
+
+            # Base test
+            np.savetxt(path, values, delimiter=',', header='wl,R,G,B')
+            out = v2v_nb.utils.load_csv(path)
+            self.assertEqual(out.shape, (401, 3))
+            self.assertTrue((np.abs(out - values[:, 1:]) < 1e-2).all())
+
+            # Percent test
+            np.savetxt(path, 100 * values, delimiter=',', header='wl,R,G,B')
+            out = v2v_nb.utils.load_csv(path)
+            self.assertEqual(out.shape, (401, 3))
+            self.assertTrue((np.abs(out - values[:, 1:]) < 1e-2).all())
+
+            # Normalize test - base
+            norm_values = values / values.sum(0, keepdims=True)
+            np.savetxt(path, norm_values, delimiter=',', header='wl,R,G,B')
+            out = v2v_nb.utils.load_csv(path, normalize=True)
+            self.assertEqual(out.shape, (401, 3))
+            self.assertTrue((np.abs(out - norm_values[:, 1:]) < 1e-2).all())
+
+            # Normalize test - warning
+            np.savetxt(path, values, delimiter=',', header='wl,R,G,B')
+            with self.assert_prints('Columns in'):
+                out = v2v_nb.utils.load_csv(path, normalize=True)
+            self.assertEqual(out.shape, (401, 3))
+            self.assertTrue((np.abs(out - norm_values[:, 1:]) < 1e-2).all())
 
     def test_make_displayable(self):
         # Test make_displayable works properly. Note deliberate choice of
