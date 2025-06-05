@@ -8,7 +8,7 @@ import cv2
 import ipyevents as events
 import ipywidgets as widgets
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 import traitlets
 
 import video2vision as v2v
@@ -23,18 +23,6 @@ _PAIR = traitlets.Tuple(traitlets.Int(), traitlets.Int())
 
 DEFAULT_CROSSHAIR = np.zeros((10, 10, 4), dtype=np.uint8)
 DEFAULT_CROSSHAIR[:, :, 1] = DEFAULT_CROSSHAIR[:, :, 3] = 255
-
-# Try to get Inconsolata. If it's not available, try arial, which should be
-# available on most Windows systems.
-try:
-    ImageFont.truetype('Inconsolata.otf', 32)
-except OSError:
-    FONT = 'Arial.ttf'
-else:
-    FONT = 'Inconsolata.otf'
-
-
-FONT_COLOR = (0, 255, 0)
 
 
 class DisplayBox(widgets.VBox):
@@ -561,12 +549,11 @@ class SelectorBox(DisplayBox):
         image = Image.fromarray(image)
 
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype(FONT, max(int(32 * w / 2000), 1))
         for number, (x, y) in zip(self.idxs, self.crosshairs):
             x = int(x * rs[0]) + (ch_w // 2) + 4
             y = int(y * rs[1]) + (ch_h // 2) + 4
             draw.text(
-                (x, y), str(number), font=font,
+                (x, y), str(number), font_size=max(int(32 * w / 2000), 1),
                 fill=(self.font_color if is_rgb else max(self.font_color)),
             )
 
