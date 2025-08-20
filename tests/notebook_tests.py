@@ -260,6 +260,9 @@ class DisplayTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_root:
             image = np.zeros((8, 8, 3) if rgb else (8, 8), dtype=dtype)
             image[0, 0] = 255
+            if rgb and ext == 'tif':
+                image = np.rollaxis(image, 2, 0)
+
             path_0 = os.path.join(temp_root, f'0.{ext}')
             if ext == 'tif':
                 self.assertTrue(has_tiff, 'Needs tifffile for this test')

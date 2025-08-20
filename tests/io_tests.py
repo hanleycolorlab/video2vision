@@ -40,6 +40,24 @@ class IOTest(unittest.TestCase):
 
         image = v2v.load(path, for_display=True)
 
+    def test_load_tiff(self):
+        '''
+        Tests the ability of :func:`load` to load tiff files.
+        '''
+        path = os.path.join(os.path.dirname(__file__), 'data/tiff_example.tiff')
+        image = v2v.load(path)
+        should_be = (
+            np.array([2824, 2844, 2824, 2827, 2856, 2844, 2848, 2852]) / 15360
+        )
+        self.assertTrue((np.abs(image[0, :8, 0] - should_be) < 1e-7).all(), (should_be, image[0, :8, 0]))
+
+        out = np.empty_like(image)
+        image = v2v.load(path, out=out)
+        self.assertTrue((np.abs(image[0, :8, 0] - should_be) < 1e-7).all())
+        self.assertTrue((np.abs(out[0, :8, 0] - should_be) < 1e-7).all())
+
+        image = v2v.load(path, for_display=True)
+
     def test_load_and_save(self):
         '''
         Tests the :func:`load` and :func:`save` functions.
@@ -79,7 +97,7 @@ class IOTest(unittest.TestCase):
                     rtn = v2v.load(temp_path)
                     self.assertEqual(rtn.dtype, np.float32, (ext, shape))
                     self.assertEqual(rtn.shape, shape, (ext, shape))
-                    self.assertTrue(_is_close(rtn, image))
+                    self.assertTrue(_is_close(rtn, image), (image.max(), rtn.max()))
 
                     out = np.empty_like(image)
                     v2v.save(image, temp_path)

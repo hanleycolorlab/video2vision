@@ -69,9 +69,13 @@ def load(path: str, out: Optional[np.ndarray] = None,
         if not has_tiff:
             raise ImportError('tifffile is needed to read tif files')
         image = tifffile.imread(path)
+        # tifffile returns images in (C, H, W) arrangement instead of (H, W, C)
+        image = np.rollaxis(image, 0, 3)
         # Rescale to [0, 1] and float32
         if not for_display:
             image = _convert_and_scale_uint8(image, out=out)
+        elif image.dtype != np.uint8:
+            image = np.clip(image, 0, 255).astype(np.uint8)
 
     elif path.lower().endswith('.mp4'):
         reader = cv2.VideoCapture(path)
@@ -169,6 +173,9 @@ def save(image: np.ndarray, path: str):
     elif path.lower().endswith(('.tif', '.tiff')):
         if not has_tiff:
             raise ImportError('tifffile is needed to write tif files')
+        # tifffile wants images in (C, H, W) arrangement instead of (H, W, C)
+        if image.ndim == 3:
+            image = np.rollaxis(image, 2, 0)
         # photometric='minisblack' suppresses a DeprecationWarning.
         tifffile.imwrite(path, image, photometric='minisblack')
 
