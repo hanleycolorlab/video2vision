@@ -40,6 +40,7 @@ _IMAGE_EXTENSIONS = [
     'arw', 'jpeg', 'jpg', 'mp4', 'nef', 'png', 'raw', 'tif', 'tiff'
 ]
 
+_BAYER_PATTERN = np.array([[0, 1], [3, 2]], dtype=np.uint8)
 
 def load(path: str, out: Optional[np.ndarray] = None,
          for_display: bool = False) -> np.ndarray:
@@ -97,35 +98,37 @@ def load(path: str, out: Optional[np.ndarray] = None,
         if for_display:
             with rawpy.imread(path) as raw_file:
                 image = raw_file.postprocess()
+                out_size = [x // 2 for x in raw_file.raw_image.shape[::-1]]
+            # Reverse channels from RGB to BGR
+            image = image[:, :, ::-1]
+            # Resize to half size, so that output size matches the non-display
+            # path
+            image = cv2.resize(image, out_size, dst=out)
 
         else:
             with rawpy.imread(path) as raw_file:
-                image = raw_file.postprocess(
-                    # Prevents gamma correction
-                    gamma=(1, 1),
-                    output_color=rawpy.ColorSpace.raw,
-                    no_auto_scale=True,
-                    no_auto_bright=True,
-                    # Output will be maximum precision
-                    output_bps=16,
-                )
-                white_level = np.array([
-                    raw_file.camera_white_level_per_channel[0],
-                    mean((raw_file.camera_white_level_per_channel[1],
-                          raw_file.camera_white_level_per_channel[3])),
-                    raw_file.camera_white_level_per_channel[2],
-                ])
+                if raw_file.color_desc != b'RGBG':
+                    raise RuntimeError(
+                        f"Bayer matrix not supported. Expected RGBG, but got "
+                        f"{raw_file.color_desc}"
+                    )
+                if not np.array_equal(raw_file.raw_pattern, _BAYER_PATTERN):
+                    raise RuntimeError(
+                        "Bayer matrix not supported. Expected [[R, G], [G, B]]"
+                    )
+                white_level = raw_file.white_level
+                raw_image = raw_file.raw_image.astype(np.float32)
 
-            # Rescales to [0, 1] and float32
-            image = image.astype(np.float32)
-            image = np.divide(
-                image,
-                white_level.reshape(1, 1, 3),
-                None if (out is None) else out[:, :, ::-1],
-            )
+            blue = raw_image[1::2, 1::2]
+            green = 0.5 * (raw_image[0::2, 1::2] + raw_image[1::2, 0::2])
+            red = raw_image[0::2, 0::2]
 
-        # Reverse channels from RGB to BGR
-        image = image[:, :, ::-1]
+            if out is None:
+                image = np.empty((*red.shape, 3), dtype=np.float32)
+            else:
+                image = out
+            for i, v in enumerate([blue, green, red]):
+                np.divide(v, white_level, out=image[..., i])
 
     else:
         # This will return None if it can't read the path

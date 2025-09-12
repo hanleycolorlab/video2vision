@@ -30,7 +30,7 @@ class IOTest(unittest.TestCase):
         '''
         path = os.path.join(os.path.dirname(__file__), 'data/raw_example.arw')
         image = v2v.load(path)
-        should_be = np.array([456, 456, 474, 492, 493, 494, 494, 494.]) / 15360
+        should_be = np.array([562, 560, 554, 550, 552, 542, 542, 546]) / 16383
         self.assertTrue((np.abs(image[:8, 0, 2] - should_be) < 1e-7).all())
 
         out = np.empty_like(image)

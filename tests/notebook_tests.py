@@ -448,14 +448,14 @@ class DisplayTest(unittest.TestCase):
 
     def test_selector_box_arw(self):
         path = os.path.join(os.path.dirname(__file__), 'data/raw_example.arw')
-        loader = v2v.Loader(path, expected_size=(6024, 4024))
+        loader = v2v.Loader(path, expected_size=(3024, 2012))
         selector_box = v2v_nb.SelectorBox(loader, output_size=(128, 128), w=1)
         selector_box.idxs = [0]
         selector_box.crosshairs = [(0, 0)]
         selector_box.crosshair_type = [0]
         samples, _ = selector_box.get_samples()
         should_be = np.array(
-            [[0.02473958, 0.0625, 0.0296875]], dtype=np.float32
+            [[0.03454801, 0.03991943, 0.03430385]], dtype=np.float32
         )
         self.assertTrue(np.isclose(samples, should_be).all(), samples)
 
