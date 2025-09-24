@@ -596,6 +596,12 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             # length.
             with _coerce_to_4dim(source), _coerce_to_4dim(control):
                 nf = min(source['image'].shape[2], control['image'].shape[2])
+                # There may be no frames left after the shift if the batch size
+                # is smaller than the shift and the buffer was empty. In this
+                # case, we return a HoldToken because operations are not
+                # guaranteed to work with images with zero frames.
+                if nf == 0:
+                    return HoldToken()
                 source['image'] = source['image'][:, :, :nf, :]
                 control['image'] = control['image'][:, :, :nf, :]
 
@@ -767,31 +773,47 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             return source, control
 
         shifted, static = (source, control) if shift > 0 else (control, source)
+        n_buff = 0 if (self.buff is None) else self.buff.shape[2]
         shift = abs(shift)
 
         with _coerce_to_4dim(shifted), _coerce_to_4dim(static):
             image, buff = np.split(shifted['image'], [-shift], axis=2)
 
-            if no_buffer or self.buff is None:
-                _, static['image'] = np.split(static['image'], [shift], axis=2)
-
             if not no_buffer:
-                if self.buff is not None:
-                    image = np.concatenate((self.buff, image), axis=2)
-                self.buff = buff
+                if image.shape[2] > 0:
+                    if self.buff is not None:
+                        image = np.concatenate((self.buff, image), axis=2)
+                    self.buff = buff
+                else:
+                    if self.buff is None:
+                        self.buff = buff
+                    else:
+                        self.buff = np.concatenate((self.buff, buff), axis=2)
+                    if self.buff.shape[2] >= shift:
+                        image, self.buff = np.split(
+                            self.buff, [-shift], axis=2
+                        )
+
+            if no_buffer or n_buff < shift:
+                _, static['image'] = np.split(
+                    static['image'], [shift - n_buff], axis=2
+                )
 
             shifted['image'] = image
 
-        if 'names' in static and (no_buffer or self.buff_names is None):
+        if 'names' in static and (no_buffer or (n_buff < shift)):
             static['names'] = static['names'][shift:]
 
         if 'names' in shifted:
-            buff = shifted['names'][-shift:]
-            shifted['names'] = shifted['names'][:-shift]
-            if not no_buffer:
-                if self.buff_names is not None:
-                    shifted['names'] = self.buff_names + shifted['names']
-                self.buff_names = buff
+            if no_buffer:
+                shifted['names'] = shifted['names'][:-shift]
+            else:
+                if self.buff_names is None:
+                    self.buff_names = shifted['names']
+                else:
+                    self.buff_names += shifted['names']
+                shifted['names'] = self.buff_names[:image.shape[2]]
+                self.buff_names = self.buff_names[image.shape[2]:]
 
         return source, control
 

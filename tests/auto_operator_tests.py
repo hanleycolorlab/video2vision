@@ -710,6 +710,37 @@ class AutoTemporalAlignTest(unittest.TestCase):
         self.assertTrue(align_op.source_background is None)
         self.assertTrue(align_op.control_background is None)
 
+    def test_buffer(self):
+        align_op = v2v.AutoTemporalAlign(
+            (0, 2), bands=[[0], [0]], time_shift=4, coe=np.eye(3),
+            output_size=(128, 128)
+        )
+
+        image = self._build_image()
+        data_dict = {
+            'image': np.stack((image, image + 1), axis=2),
+            'names': ['a', 'b'],
+        }
+        out = align_op(data_dict, data_dict)
+        self.assertTrue(isinstance(out, v2v.operators.HoldToken))
+
+        data_dict = {
+            'image': data_dict['image'] + 2,
+            'names': ['c', 'd'],
+        }
+        out = align_op(data_dict, data_dict)
+        self.assertTrue(isinstance(out, v2v.operators.HoldToken))
+
+        data_dict = {
+            'image': data_dict['image'] + 2,
+            'names': ['e', 'f'],
+        }
+        out = align_op(data_dict, data_dict)
+        self.assertTrue(isinstance(out, dict))
+        self.assertEqual(out['image'].shape, (128, 128, 2, 2))
+        self.assertTrue((out['image'][0, 0, :, :] == [[0, 4], [1, 5]]).all())
+        self.assertEqual(out['names'], ['a-e', 'b-f'], out['names'])
+
     def test_serialization(self):
         align_op = v2v.AutoTemporalAlign(
             (-1, 2), bands=[[0], [0]], mask=[1, 1, -1, -1]
