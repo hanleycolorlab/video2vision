@@ -161,8 +161,7 @@ def make_displayable(*images: np.ndarray) -> Image:
         elif (image.ndim == 3) and (image.shape[2] == 3):
             # BGR -> RGB
             image = image[:, :, ::-1]
-        fmt = 'L' if (image.ndim == 2) else 'RGB'
-        image = Image.fromarray(image, fmt)
+        image = Image.fromarray(image)
         display_image.paste(image, (x, 0))
         x += image.size[0]
 
