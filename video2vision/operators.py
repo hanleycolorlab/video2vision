@@ -203,7 +203,8 @@ class ConcatenateOnBands(Operator):
                     raise ValueError(
                         f'Band {band} not in image of shape {image.shape}'
                     )
-                rtn['image'].append(image[..., band])
+                extracted_band = image[..., band]
+                rtn['image'].append(extracted_band)
             # Combine masks through intersection
             if 'mask' in x:
                 if 'mask' in rtn:
@@ -225,7 +226,17 @@ class ConcatenateOnBands(Operator):
                         f'images: {v} vs.{rtn[k]}'
                     )
 
-        rtn['image'] = np.stack(rtn['image'], axis=-1)
+        # Stack bands with better error message
+        try:
+            rtn['image'] = np.stack(rtn['image'], axis=-1)
+        except ValueError as e:
+            shapes = [arr.shape for arr in rtn['image']]
+            raise ValueError(
+                f'Cannot stack bands due to shape mismatch. '
+                f'Expected all bands to have the same shape, but got: {shapes}. '
+                f'This typically happens when input videos have different frame counts '
+                f'or when alignment/warp produces different output dimensions.'
+            ) from e
 
         if rtn['names']:
             rtn['names'] = ['-'.join(x) for x in zip(*rtn['names'])]
