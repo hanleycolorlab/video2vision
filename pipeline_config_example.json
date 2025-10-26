@@ -1,0 +1,9 @@
+{
+  "animal_type": "apis",
+  "is_sony_camera": false,
+  "camera_sensitivities_path": "data/camera_sensitivities.csv",
+  "calibration_values_path": {
+    "8": "data/aruco_samples_8patch.csv",
+    "28": "data/aruco_samples_28patch.csv"
+  }
+}
