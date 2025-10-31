@@ -5,11 +5,13 @@ Step 1c: Review alignment composite images (MANUAL - QUICK).
 This displays the composite images created by step1b so you can visually
 verify the alignment quality. Use keyboard to approve/reject each sample.
 
-Usage:
-    # Review all samples with alignment composites
-    python scripts/step1c_review_alignments.py --all
+Usage (from project root):
+    # Using module syntax:
+    python -m scripts.step1c_review_alignments --all
+    python -m scripts.step1c_review_alignments --samples 001 006 012
 
-    # Review specific samples
+    # Or if video2vision is installed:
+    python scripts/step1c_review_alignments.py --all
     python scripts/step1c_review_alignments.py --samples 001 006 012
 
     # Skip main/calibration
@@ -30,8 +32,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def load_sample_config(sample_id, samples_dir='videos/samples'):

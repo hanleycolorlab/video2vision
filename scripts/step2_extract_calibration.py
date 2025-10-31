@@ -5,14 +5,15 @@ Step 2: Extract calibration patches from aligned calibration frames (MANUAL - QU
 This loads the first frame of calibration videos, applies alignment, detects
 ArUco markers (if present), and extracts color patch pixel values for linearization.
 
-Usage:
-    # Process all samples (auto-detect ArUco, show for verification)
+Usage (from project root):
+    # Using module syntax:
+    python -m scripts.step2_extract_calibration --all
+    python -m scripts.step2_extract_calibration --all --auto-only
+    python -m scripts.step2_extract_calibration --samples 001 006 012
+
+    # Or if video2vision is installed:
     python scripts/step2_extract_calibration.py --all
-
-    # Auto-only mode: skip manual intervention if ArUco fails
     python scripts/step2_extract_calibration.py --all --auto-only
-
-    # Specific samples
     python scripts/step2_extract_calibration.py --samples 001 006 012
 
     # Force re-extraction
@@ -29,8 +30,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from video2vision import utils as v2v_utils
 from video2vision.warp import Warp

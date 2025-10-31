@@ -2,25 +2,56 @@
 
 Process multispectral video pairs efficiently by separating manual and automated steps.
 
+## Running Scripts
+
+After removing `sys.path.insert`, there are two ways to run these scripts:
+
+### Method 1: Run as Python modules (Recommended)
+
+From the project root directory, use the `-m` flag:
+
+```bash
+# Examples
+python -m scripts.step1a_select_flips --samples 001
+python -m scripts.step1b_run_alignments --all --save-preview
+python -m scripts.step2_extract_calibration --all
+python -m scripts.step3_apply_full_pipeline --approved-only
+```
+
+### Method 2: Install the package first
+
+Install video2vision in development mode:
+
+```bash
+pip install -e .
+```
+
+Then run scripts directly:
+
+```bash
+python scripts/step1a_select_flips.py --samples 001
+python scripts/step1b_run_alignments.py --all --save-preview
+```
+
 ## Quick Start
 
 ```bash
 source .venv/bin/activate
 
 # Step 1a: Select flips for all samples (10 min - click through)
-python scripts/step1a_select_flips.py --all
+python -m scripts.step1a_select_flips --all
 
 # Step 1b: Calculate alignments + generate previews (~1-2 hours)
-python scripts/step1b_run_alignments.py --all --save-preview
+python -m scripts.step1b_run_alignments --all --save-preview
 
 # Step 1c: Review alignment composites (~2-3 min)
-python scripts/step1c_review_alignments.py --all
+python -m scripts.step1c_review_alignments --all
 
 # Step 2: Extract calibration patches (~15 min)
-python scripts/step2_extract_calibration.py --all
+python -m scripts.step2_extract_calibration --all
 
 # Step 3: Apply full pipeline to main videos (overnight)
-python scripts/step3_apply_full_pipeline.py --approved-only
+python -m scripts.step3_apply_full_pipeline --approved-only
 ```
 
 **Quick start for aligned-only mode (skip calibration):**
@@ -29,24 +60,24 @@ python scripts/step3_apply_full_pipeline.py --approved-only
 source .venv/bin/activate
 
 # Step 1a: Select flips for all samples (10 min - click through)
-python scripts/step1a_select_flips.py --all
+python -m scripts/step1a_select_flips.py --all
 
 # Step 1b: Calculate alignments + generate previews (~1-2 hours)
-python scripts/step1b_run_alignments.py --all --save-preview
+python -m scripts/step1b_run_alignments.py --all --save-preview
 
 # Step 1c: Review alignment composites (~2-3 min)
-python scripts/step1c_review_alignments.py --all
+python -m scripts/step1c_review_alignments.py --all
 
 # Step 3: Output aligned videos only (no calibration needed)
-python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+python -m scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
 ```
 
 **Using a different samples directory:**
 
 ```bash
 # All scripts support --samples-dir argument
-python scripts/step1a_select_flips.py --all --samples-dir /path/to/other/videos
-python scripts/step3_apply_full_pipeline.py --approved-only --samples-dir /path/to/other/videos
+python -m scripts/step1a_select_flips.py --all --samples-dir /path/to/other/videos
+python -m scripts/step3_apply_full_pipeline.py --approved-only --samples-dir /path/to/other/videos
 ```
 
 ## The Workflow
@@ -126,13 +157,13 @@ your-samples-directory/
 
 ```bash
 # Process all samples
-python scripts/step1a_select_flips.py --all
+python -m scripts.step1a_select_flips --all
 
 # Process specific samples
-python scripts/step1a_select_flips.py --samples 001 006 012
+python -m scripts.step1a_select_flips --samples 001 006 012
 
 # Use different samples directory
-python scripts/step1a_select_flips.py --all --samples-dir /path/to/videos
+python -m scripts.step1a_select_flips --all --samples-dir /path/to/videos
 ```
 
 **What it does:**
@@ -156,37 +187,37 @@ python scripts/step1a_select_flips.py --all --samples-dir /path/to/videos
 
 ```bash
 # STANDARD WORKFLOW: Calculate alignment + save preview images
-python scripts/step1b_run_alignments.py --all --save-preview
+python -m scripts.step1b_run_alignments --all --save-preview
 
 # Process specific samples
-python scripts/step1b_run_alignments.py --samples 001 006 012 --save-preview
+python -m scripts.step1b_run_alignments --samples 001 006 012 --save-preview
 
 # PREVIEW-ONLY MODE: Regenerate previews from existing alignments
-python scripts/step1b_run_alignments.py --all --preview-only
+python -m scripts.step1b_run_alignments --all --preview-only
 
 # Override alignment methods
-python scripts/step1b_run_alignments.py --all --main-method ecc --calibration-method aruco
+python -m scripts.step1b_run_alignments --all --main-method ecc --calibration-method aruco
 
 # Try different motion models (if alignment fails)
-python scripts/step1b_run_alignments.py --all --save-preview --main-motion-type euclidean
-python scripts/step1b_run_alignments.py --all --save-preview --main-motion-type affine
+python -m scripts.step1b_run_alignments --all --save-preview --main-motion-type euclidean
+python -m scripts.step1b_run_alignments --all --save-preview --main-motion-type affine
 
 # Reprocess only rejected samples (after step1c review)
-python scripts/step1b_run_alignments.py --all --rejected-only --save-preview --main-motion-type euclidean
+python -m scripts.step1b_run_alignments --all --rejected-only --save-preview --main-motion-type euclidean
 
 # Disable temporal alignment (if cameras are perfectly synced)
-python scripts/step1b_run_alignments.py --all --save-preview --no-temporal
+python -m scripts.step1b_run_alignments --all --save-preview --no-temporal
 
 # Process only main OR calibration videos
-python scripts/step1b_run_alignments.py --all --main-only --save-preview
-python scripts/step1b_run_alignments.py --all --calibration-only --save-preview
+python -m scripts.step1b_run_alignments --all --main-only --save-preview
+python -m scripts.step1b_run_alignments --all --calibration-only --save-preview
 
 # Use a known-good alignment as starting point
-python scripts/step1b_run_alignments.py --samples 001 --save-preview --save-as-template
-python scripts/step1b_run_alignments.py --all --save-preview --use-initial-transform 001
+python -m scripts.step1b_run_alignments --samples 001 --save-preview --save-as-template
+python -m scripts.step1b_run_alignments --all --save-preview --use-initial-transform 001
 
 # Force reprocessing
-python scripts/step1b_run_alignments.py --samples 001 --save-preview --force
+python -m scripts.step1b_run_alignments --samples 001 --save-preview --force
 ```
 
 **What it does:**
@@ -241,10 +272,10 @@ Or use a known-good sample as template:
 
 ```bash
 # Process one sample and save as template
-python scripts/step1b_run_alignments.py --samples 001 --save-preview --save-as-template
+python -m scripts.step1b_run_alignments --samples 001 --save-preview --save-as-template
 
 # Use that template for all other samples
-python scripts/step1b_run_alignments.py --all --save-preview --use-initial-transform 001
+python -m scripts.step1b_run_alignments --all --save-preview --use-initial-transform 001
 ```
 
 **Output:**
@@ -262,7 +293,7 @@ python scripts/step1b_run_alignments.py --all --save-preview --use-initial-trans
 2. Review composites in step1c
 3. If some alignments rejected, reprocess with `--rejected-only` and different settings:
    ```bash
-   python scripts/step1b_run_alignments.py --all --rejected-only --save-preview --main-motion-type euclidean
+   python -m scripts.step1b_run_alignments --all --rejected-only --save-preview --main-motion-type euclidean
    ```
 4. Repeat step1c review until all alignments approved
 
@@ -272,14 +303,14 @@ python scripts/step1b_run_alignments.py --all --save-preview --use-initial-trans
 
 ```bash
 # Review all samples with composites
-python scripts/step1c_review_alignments.py --all
+python -m scripts.step1c_review_alignments --all
 
 # Review specific samples
-python scripts/step1c_review_alignments.py --samples 001 006 012
+python -m scripts.step1c_review_alignments --samples 001 006 012
 
 # Review only main videos (skip calibration)
-python scripts/step1c_review_alignments.py --all --main-only
-python scripts/step1c_review_alignments.py --all --skip-calibration  # same as --main-only
+python -m scripts.step1c_review_alignments --all --main-only
+python -m scripts.step1c_review_alignments --all --skip-calibration  # same as --main-only
 ```
 
 **What it does:**
@@ -310,32 +341,32 @@ python scripts/step1c_review_alignments.py --all --skip-calibration  # same as -
 
 ```bash
 # STANDARD WORKFLOW: Auto-detect ArUco, show for verification
-python scripts/step2_extract_calibration.py --all
+python -m scripts.step2_extract_calibration --all
 
 # Auto-only: skip manual if ArUco fails
-python scripts/step2_extract_calibration.py --all --auto-only
+python -m scripts.step2_extract_calibration --all --auto-only
 
 # Specific samples
-python scripts/step2_extract_calibration.py --samples 001 006 012
+python -m scripts.step2_extract_calibration --samples 001 006 012
 
 # Specify different patch count (default: 28 from autolinearizer)
-python scripts/step2_extract_calibration.py --all --num-patches 24
-python scripts/step2_extract_calibration.py --samples 005 014 --num-patches 8
+python -m scripts.step2_extract_calibration --all --num-patches 24
+python -m scripts.step2_extract_calibration --samples 005 014 --num-patches 8
 
 # Use different autolinearizer
-python scripts/step2_extract_calibration.py --all --autolinearizer data/autolinearizer_custom.json
+python -m scripts.step2_extract_calibration --all --autolinearizer data/autolinearizer_custom.json
 
 # Extract from different frame (not first frame)
-python scripts/step2_extract_calibration.py --all --frame-offset 10
+python -m scripts.step2_extract_calibration --all --frame-offset 10
 
 # Force re-extraction
-python scripts/step2_extract_calibration.py --samples 001 --force
+python -m scripts.step2_extract_calibration --samples 001 --force
 
 # Generate analysis plots/metrics (for already-processed samples)
-python scripts/step2_extract_calibration.py --all --export-analysis
+python -m scripts.step2_extract_calibration --all --export-analysis
 
 # Use different calibration/camera CSVs
-python scripts/step2_extract_calibration.py --all \
+python -m scripts.step2_extract_calibration --all \
   --calibration-csv data/aruco_samples.csv \
   --camera-csv data/camera_sensitivities.csv
 ```
@@ -400,7 +431,7 @@ If the default autolinearizer doesn't position patches correctly, create your ow
 
 ```bash
 # Create custom autolinearizer from sample with good ArUco markers
-python scripts/create_autolinearizer.py --sample 006
+python -m scripts.create_autolinearizer --sample 006
 
 # This creates data/autolinearizer_custom.json
 # Replace the default:
@@ -408,7 +439,7 @@ cp data/autolinearizer.json data/autolinearizer_original.json
 cp data/autolinearizer_custom.json data/autolinearizer.json
 
 # Or use via command line:
-python scripts/step2_extract_calibration.py --all --autolinearizer data/autolinearizer_custom.json
+python -m scripts.step2_extract_calibration --all --autolinearizer data/autolinearizer_custom.json
 ```
 
 **What it does:**
@@ -430,7 +461,7 @@ python scripts/step2_extract_calibration.py --all --autolinearizer data/autoline
 
 ### Step 3: Apply Full Pipeline (Automated - Overnight)
 
-**BEFORE RUNNING:** Edit `videos/samples/pipeline_config.json` with your settings and save in a new locations:
+**BEFORE RUNNING:** Create a `pipeline_config.json` (see `data/pipeline_config.json`for a sample) with your settings and save in a new locations:
 
 ```json
 {
@@ -465,44 +496,44 @@ python scripts/step2_extract_calibration.py --all --autolinearizer data/autoline
 
 ```bash
 # STANDARD WORKFLOW: Process only approved samples (recommended)
-python scripts/step3_apply_full_pipeline.py --approved-only
+python -m scripts.step3_apply_full_pipeline --approved-only
 
 # Override animal type from command line
-python scripts/step3_apply_full_pipeline.py --approved-only --animal avian
+python -m scripts.step3_apply_full_pipeline --approved-only --animal avian
 
 # Process specific samples
-python scripts/step3_apply_full_pipeline.py --samples 001 005 --animal apis
+python -m scripts.step3_apply_full_pipeline --samples 001 005 --animal apis
 
 # Process all samples (ignoring review status)
-python scripts/step3_apply_full_pipeline.py --all --animal bombus_terrestris_dalmaticus
+python -m scripts.step3_apply_full_pipeline --all --animal bombus_terrestris_dalmaticus
 
 # ALIGNED-ONLY MODE: Output aligned videos without color science transformations
-python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+python -m scripts.step3_apply_full_pipeline --approved-only --aligned-only
 
 # Aligned-only with preview mode
-python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview
+python -m scripts.step3_apply_full_pipeline --samples 001 --aligned-only --preview
 
 # Aligned-only for specific samples
-python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --aligned-only
+python -m scripts.step3_apply_full_pipeline --samples 001 006 012 --aligned-only
 
 # Generate analysis plots and visualizations
-python scripts/step3_apply_full_pipeline.py --approved-only --save-analysis
+python -m scripts.step3_apply_full_pipeline --approved-only --save-analysis
 
 # Preview mode: process only first 30 frames
-python scripts/step3_apply_full_pipeline.py --samples 001 --preview
-python scripts/step3_apply_full_pipeline.py --samples 001 --preview 100  # first 100 frames
+python -m scripts.step3_apply_full_pipeline --samples 001 --preview
+python -m scripts.step3_apply_full_pipeline --samples 001 --preview 100  # first 100 frames
 
 # Use different output directory
-python scripts/step3_apply_full_pipeline.py --approved-only --output-dir videos/processed
+python -m scripts.step3_apply_full_pipeline --approved-only --output-dir videos/processed
 
 # Adjust batch size (if running out of memory)
-python scripts/step3_apply_full_pipeline.py --approved-only --batch-size 16
+python -m scripts.step3_apply_full_pipeline --approved-only --batch-size 16
 
 # Force reprocessing
-python scripts/step3_apply_full_pipeline.py --samples 001 --force
+python -m scripts.step3_apply_full_pipeline --samples 001 --force
 
 # Use custom pipeline config
-python scripts/step3_apply_full_pipeline.py --approved-only --pipeline-config /path/to/config.json
+python -m scripts.step3_apply_full_pipeline --approved-only --pipeline-config /path/to/config.json
 ```
 
 **What it does:**
@@ -585,10 +616,10 @@ Use `--preview` to quickly test the pipeline on a small number of frames:
 
 ```bash
 # Process first 30 frames (default)
-python scripts/step3_apply_full_pipeline.py --samples 001 --preview
+python -m scripts.step3_apply_full_pipeline --samples 001 --preview
 
 # Process first 100 frames
-python scripts/step3_apply_full_pipeline.py --samples 001 --preview 100
+python -m scripts.step3_apply_full_pipeline --samples 001 --preview 100
 ```
 
 Preview outputs have `_preview` suffix: `001_animal_apis_preview.mp4`, `001_human_preview.mp4`
@@ -690,12 +721,12 @@ videos/samples/001/
 - Check composite preview - is alignment actually bad?
 - Try different motion model:
   ```bash
-  python scripts/step1b_run_alignments.py --samples 001 --save-preview --main-motion-type euclidean --force
+  python -m scripts.step1b_run_alignments --samples 001 --save-preview --main-motion-type euclidean --force
   ```
 - Verify flip selection in step1a was correct
 - Try using initial transform from a known-good sample:
   ```bash
-  python scripts/step1b_run_alignments.py --samples 001 --save-preview --use-initial-transform 006 --force
+  python -m scripts.step1b_run_alignments --samples 001 --save-preview --use-initial-transform 006 --force
   ```
 
 ### Step 1c: Composite looks misaligned
@@ -703,7 +734,7 @@ videos/samples/001/
 - Reject it (press N)
 - Re-run step1b with different settings:
   ```bash
-  python scripts/step1b_run_alignments.py --samples 001 --save-preview --main-motion-type euclidean --force
+  python -m scripts.step1b_run_alignments --samples 001 --save-preview --main-motion-type euclidean --force
   ```
 - Or manually edit `config.json` to adjust parameters
 
@@ -745,24 +776,24 @@ videos/samples/001/
 ### Single sample end-to-end:
 
 ```bash
-python scripts/step1a_select_flips.py --samples 001
-python scripts/step1b_run_alignments.py --samples 001 --save-preview
-python scripts/step1c_review_alignments.py --samples 001
-python scripts/step2_extract_calibration.py --samples 001
-python scripts/step3_apply_full_pipeline.py --samples 001
+python -m scripts.step1a_select_flips --samples 001
+python -m scripts.step1b_run_alignments --samples 001 --save-preview
+python -m scripts.step1c_review_alignments --samples 001
+python -m scripts.step2_extract_calibration --samples 001
+python -m scripts.step3_apply_full_pipeline --samples 001
 ```
 
 ### Batch all 40 samples (recommended):
 
 ```bash
 # Morning: Manual work (~30 min)
-python scripts/step1a_select_flips.py --all
-python scripts/step1b_run_alignments.py --all --save-preview  # Wait ~1-2 hrs
-python scripts/step1c_review_alignments.py --all
-python scripts/step2_extract_calibration.py --all
+python -m scripts.step1a_select_flips --all
+python -m scripts.step1b_run_alignments --all --save-preview  # Wait ~1-2 hrs
+python -m scripts.step1c_review_alignments --all
+python -m scripts.step2_extract_calibration --all
 
 # Evening: Start overnight processing
-python scripts/step3_apply_full_pipeline.py --approved-only --animal apis
+python -m scripts.step3_apply_full_pipeline --approved-only --animal apis
 ```
 
 ### Using a different samples directory:
@@ -771,40 +802,40 @@ python scripts/step3_apply_full_pipeline.py --approved-only --animal apis
 # All scripts support --samples-dir
 export SAMPLES_DIR="/path/to/other/videos"
 
-python scripts/step1a_select_flips.py --all --samples-dir $SAMPLES_DIR
-python scripts/step1b_run_alignments.py --all --save-preview --samples-dir $SAMPLES_DIR
-python scripts/step1c_review_alignments.py --all --samples-dir $SAMPLES_DIR
-python scripts/step2_extract_calibration.py --all --samples-dir $SAMPLES_DIR
-python scripts/step3_apply_full_pipeline.py --approved-only --samples-dir $SAMPLES_DIR
+python -m scripts.step1a_select_flips --all --samples-dir $SAMPLES_DIR
+python -m scripts.step1b_run_alignments --all --save-preview --samples-dir $SAMPLES_DIR
+python -m scripts.step1c_review_alignments --all --samples-dir $SAMPLES_DIR
+python -m scripts.step2_extract_calibration --all --samples-dir $SAMPLES_DIR
+python -m scripts.step3_apply_full_pipeline --approved-only --samples-dir $SAMPLES_DIR
 ```
 
 ### Troubleshoot a single problematic sample:
 
 ```bash
 # Force re-align with different method
-python scripts/step1b_run_alignments.py --samples 005 --main-method any --save-preview --force
+python -m scripts.step1b_run_alignments --samples 005 --main-method any --save-preview --force
 
 # Try euclidean motion model
-python scripts/step1b_run_alignments.py --samples 005 --main-motion-type euclidean --save-preview --force
+python -m scripts.step1b_run_alignments --samples 005 --main-motion-type euclidean --save-preview --force
 
 # Manual calibration patches
-python scripts/step2_extract_calibration.py --samples 005 --force
+python -m scripts.step2_extract_calibration --samples 005 --force
 
 # Test with preview mode first
-python scripts/step3_apply_full_pipeline.py --samples 005 --preview
+python -m scripts.step3_apply_full_pipeline --samples 005 --preview
 
 # Process just this one
-python scripts/step3_apply_full_pipeline.py --samples 005 --force
+python -m scripts.step3_apply_full_pipeline --samples 005 --force
 ```
 
 ### Reprocess rejected alignments:
 
 ```bash
 # After step1c review, reprocess all rejected samples with euclidean motion
-python scripts/step1b_run_alignments.py --all --rejected-only --save-preview --main-motion-type euclidean
+python -m scripts.step1b_run_alignments --all --rejected-only --save-preview --main-motion-type euclidean
 
 # Review again
-python scripts/step1c_review_alignments.py --all
+python -m scripts.step1c_review_alignments --all
 
 # Repeat until all approved
 ```
@@ -816,13 +847,13 @@ python scripts/step1c_review_alignments.py --all
 # This is useful if you just need geometrically aligned videos for other analysis
 
 # Process approved samples - no calibration patches needed
-python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+python -m scripts.step3_apply_full_pipeline --approved-only --aligned-only
 
 # Test with preview mode first
-python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview
+python -m scripts.step3_apply_full_pipeline --samples 001 --aligned-only --preview
 
 # Process specific samples
-python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --aligned-only
+python -m scripts.step3_apply_full_pipeline --samples 001 006 012 --aligned-only
 
 # Note: Steps 1a, 1b, and 1c are still required for alignment parameters
 # Step 2 (calibration) is NOT needed for aligned-only mode

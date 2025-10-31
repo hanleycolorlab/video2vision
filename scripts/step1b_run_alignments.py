@@ -9,12 +9,13 @@ By default:
 - Main videos use ECC alignment (slow but robust, no markers needed)
 - Calibration videos use ArUco alignment (fast, requires markers)
 
-Usage:
-    # CALCULATE ALIGNMENT PARAMS (FAST): Determine alignment from first 30 frames, save preview
-    # The alignment operators automatically only use the first batch to find parameters
-    python scripts/step1b_run_alignments.py --all --save-preview
+Usage (from project root):
+    # Using module syntax:
+    python -m scripts.step1b_run_alignments --all --save-preview
+    python -m scripts.step1b_run_alignments --samples 001 006 012 --save-preview
 
-    # Process specific samples
+    # Or if video2vision is installed:
+    python scripts/step1b_run_alignments.py --all --save-preview
     python scripts/step1b_run_alignments.py --samples 001 006 012 --save-preview
 
     # GENERATE PREVIEWS ONLY: If you forgot --save-preview, regenerate previews from existing alignments
@@ -64,8 +65,6 @@ import json
 import sys
 import time
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from video2vision import io, pipeline
 from video2vision.auto_operators import AutoAlign, AutoTemporalAlign, AlignmentNotFound

@@ -3,13 +3,16 @@
 Quick setup checker for batch video processing workflow.
 
 Verifies that all required files and directories are in place.
+
+Usage (from project root):
+    python -m scripts.check_setup
+
+    Or if video2vision is installed:
+    python scripts/check_setup.py
 """
 
 import sys
 from pathlib import Path
-
-# Add the package to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def check_mark(passed):
@@ -17,9 +20,9 @@ def check_mark(passed):
 
 
 def main():
-    print("="*70)
+    print("=" * 70)
     print("Video2Vision Batch Workflow Setup Check")
-    print("="*70)
+    print("=" * 70)
 
     issues = []
 
@@ -27,6 +30,7 @@ def main():
     print("\n1. Package Installation")
     try:
         import video2vision
+
         print(f"   {check_mark(True)} video2vision package installed")
     except ImportError:
         print(f"   {check_mark(False)} video2vision package NOT installed")
@@ -34,6 +38,7 @@ def main():
 
     try:
         import cv2
+
         print(f"   {check_mark(True)} opencv installed")
     except ImportError:
         print(f"   {check_mark(False)} opencv NOT installed")
@@ -41,6 +46,7 @@ def main():
 
     try:
         import numpy
+
         print(f"   {check_mark(True)} numpy installed")
     except ImportError:
         print(f"   {check_mark(False)} numpy NOT installed")
@@ -85,8 +91,12 @@ def main():
     # Check for animal sensitivities
     animal_sens_dir = Path("data/animal_sensitivities")
     if animal_sens_dir.exists():
-        animals = sorted([f.stem.replace('_sensitivities', '')
-                         for f in animal_sens_dir.glob('*_sensitivities.csv')])
+        animals = sorted(
+            [
+                f.stem.replace("_sensitivities", "")
+                for f in animal_sens_dir.glob("*_sensitivities.csv")
+            ]
+        )
         print(f"   {check_mark(True)} Animal sensitivities found")
         print(f"      Available: {', '.join(animals[:3])}")
         if len(animals) > 3:
@@ -100,8 +110,12 @@ def main():
         sample_to_check = samples[0]
         sample_dir = video_samples / sample_to_check
 
-        vis_videos = list(sample_dir.glob('VIS_*.MP4')) + list(sample_dir.glob('VIS_*.mp4'))
-        uv_videos = list(sample_dir.glob('UV_*.MP4')) + list(sample_dir.glob('UV_*.mp4'))
+        vis_videos = list(sample_dir.glob("VIS_*.MP4")) + list(
+            sample_dir.glob("VIS_*.mp4")
+        )
+        uv_videos = list(sample_dir.glob("UV_*.MP4")) + list(
+            sample_dir.glob("UV_*.mp4")
+        )
 
         if vis_videos and uv_videos:
             print(f"   {check_mark(True)} Sample {sample_to_check} has video pairs")
@@ -114,7 +128,7 @@ def main():
         print(f"   {check_mark(False)} No samples to check")
 
     # Summary
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     if issues:
         print("ISSUES FOUND:")
         for i, issue in enumerate(issues, 1):
@@ -131,5 +145,5 @@ def main():
         return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

@@ -5,7 +5,11 @@ Step 1a: Select flip directions interactively with OpenCV windows.
 Shows side-by-side VIS/UV comparison in a window.
 Press 'n' to cycle through flip options, SPACE/ENTER to confirm.
 
-Usage:
+Usage (from project root):
+    python -m scripts.step1a_select_flips --samples 001
+    python -m scripts.step1a_select_flips --all
+
+    Or if video2vision is installed:
     python scripts/step1a_select_flips.py --samples 001
     python scripts/step1a_select_flips.py --all
 """
@@ -17,8 +21,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def load_first_frame(video_path):

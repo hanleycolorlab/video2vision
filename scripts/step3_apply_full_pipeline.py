@@ -8,14 +8,15 @@ video exports to avoid recompression.
 
 Pipeline: Loader → Flip → Warp (alignment) → Linearizer → SenseConverter → Writer
 
-Usage:
-    # Process all approved samples with default animal type from pipeline_config.json
+Usage (from project root):
+    # Using module syntax:
+    python -m scripts.step3_apply_full_pipeline --approved-only
+    python -m scripts.step3_apply_full_pipeline --approved-only --animal apis
+    python -m scripts.step3_apply_full_pipeline --samples 001 006 012 --animal avian
+
+    # Or if video2vision is installed:
     python scripts/step3_apply_full_pipeline.py --approved-only
-
-    # Process all approved samples with specific animal type
     python scripts/step3_apply_full_pipeline.py --approved-only --animal apis
-
-    # Process specific samples
     python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --animal avian
 
     # Process all samples (ignore review status)
@@ -36,8 +37,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from video2vision import io, pipeline, operators, elementwise, auto_operators
 from video2vision.operators import HorizontalFlip, VerticalFlip, ConcatenateOnBands
