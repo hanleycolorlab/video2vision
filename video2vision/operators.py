@@ -231,12 +231,14 @@ class ConcatenateOnBands(Operator):
             rtn['image'] = np.stack(rtn['image'], axis=-1)
         except ValueError as e:
             shapes = [arr.shape for arr in rtn['image']]
-            raise ValueError(
+            msg = (
                 f'Cannot stack bands due to shape mismatch. '
-                f'Expected all bands to have the same shape, but got: {shapes}. '
-                f'This typically happens when input videos have different frame counts '
-                f'or when alignment/warp produces different output dimensions.'
-            ) from e
+                f'Expected all bands to have the same shape, '
+                f'but got: {shapes}. This typically happens when '
+                f'input videos have different frame counts or when '
+                f'alignment/warp produces different output dimensions.'
+            )
+            raise ValueError(msg) from e
 
         if rtn['names']:
             rtn['names'] = ['-'.join(x) for x in zip(*rtn['names'])]

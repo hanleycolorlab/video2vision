@@ -2,20 +2,23 @@
 """
 Create a custom autolinearizer from a calibration frame.
 
-This script lets you manually position the 28 (or 24) color patches on a reference
-calibration image. It detects the ArUco markers and then you manually place dots
-on each color patch center. The result is saved as a new autolinearizer JSON file.
+This script lets you manually position the 28 (or 24) color patches on a
+reference calibration image. It detects the ArUco markers and then you
+manually place dots on each color patch center. The result is saved as a
+new autolinearizer JSON file.
 
 Usage (from project root):
     # Using module syntax:
     python -m scripts.create_autolinearizer --sample 006
     python -m scripts.create_autolinearizer --sample 006 --num-patches 28
-    python -m scripts.create_autolinearizer --sample 006 --output my_autolinearizer.json
+    python -m scripts.create_autolinearizer \
+        --sample 006 --output my_autolinearizer.json
 
     # Or if video2vision is installed:
     python scripts/create_autolinearizer.py --sample 006
     python scripts/create_autolinearizer.py --sample 006 --num-patches 28
-    python scripts/create_autolinearizer.py --sample 006 --output my_autolinearizer.json
+    python scripts/create_autolinearizer.py \
+        --sample 006 --output my_autolinearizer.json
 """
 
 import argparse
@@ -34,7 +37,9 @@ def detect_aruco_markers(frame):
         frame_float = frame.astype(np.float32) / 255.0
         frame_dict = {"image": frame_float[:, :, np.newaxis, :]}
 
-        ts, corners = v2v_utils.locate_aruco_markers(frame_dict, np.array([0, 1, 2, 3]))
+        ts, corners = v2v_utils.locate_aruco_markers(
+            frame_dict, np.array([0, 1, 2, 3])
+        )
 
         if corners is not None and len(ts) > 0 and corners.shape[1] == 4:
             return corners[0], np.array([0, 1, 2, 3])
@@ -87,7 +92,9 @@ class AutolinearizerBuilder:
         # Draw ArUco markers
         for marker_idx in range(4):
             marker_corners = self.corners[marker_idx].astype(np.int32)
-            cv2.polylines(self.display_frame, [marker_corners], True, (0, 255, 0), 3)
+            cv2.polylines(
+                self.display_frame, [marker_corners], True, (0, 255, 0), 3
+            )
             center = marker_corners.mean(axis=0).astype(np.int32)
             cv2.putText(
                 self.display_frame,
@@ -132,7 +139,8 @@ class AutolinearizerBuilder:
         )
         cv2.putText(
             self.display_frame,
-            "Left Click: Add | Right Click: Remove Last | R: Reset | Space: Save | Q: Quit",
+            ("Left Click: Add | Right Click: Remove Last | "
+             "R: Reset | Space: Save | Q: Quit"),
             (30, 120),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.0,
@@ -175,9 +183,9 @@ class AutolinearizerBuilder:
                     self.result = self.patch_positions
                     break
                 else:
-                    print(
-                        f"Need {self.num_patches} patches, have {len(self.patch_positions)}"
-                    )
+                    patches_msg = (f"Need {self.num_patches} patches, "
+                                   f"have {len(self.patch_positions)}")
+                    print(patches_msg)
 
         cv2.destroyAllWindows()
         return self.result
@@ -187,7 +195,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Create a custom autolinearizer from a calibration frame"
     )
-    parser.add_argument("--sample", required=True, help="Sample ID (e.g., 006)")
+    parser.add_argument(
+        "--sample", required=True, help="Sample ID (e.g., 006)"
+    )
     parser.add_argument(
         "--num-patches",
         type=int,
@@ -197,7 +207,8 @@ def main():
     parser.add_argument(
         "--output",
         default="data/autolinearizer_custom.json",
-        help="Output path for autolinearizer JSON (default: data/autolinearizer_custom.json)",
+        help=("Output path for autolinearizer JSON "
+              "(default: data/autolinearizer_custom.json)"),
     )
 
     args = parser.parse_args()
@@ -207,10 +218,13 @@ def main():
     cal_dir = sample_dir / "calibration"
 
     if not cal_dir.exists():
-        print(f"Error: Calibration directory not found: {cal_dir}")
+        print(
+            f"Error: Calibration directory not found: {cal_dir}"
+        )
         sys.exit(1)
 
-    vis_videos = sorted(cal_dir.glob("VIS_*.MP4")) + sorted(cal_dir.glob("VIS_*.mp4"))
+    vis_videos = (sorted(cal_dir.glob("VIS_*.MP4")) +
+                  sorted(cal_dir.glob("VIS_*.mp4")))
     if not vis_videos:
         print(f"Error: No VIS calibration video found in {cal_dir}")
         sys.exit(1)
@@ -224,7 +238,7 @@ def main():
     cap.release()
 
     if not ret:
-        print(f"Error: Could not read video frame")
+        print("Error: Could not read video frame")
         sys.exit(1)
 
     print(f"Frame loaded: {frame.shape}")
@@ -234,23 +248,29 @@ def main():
     corners, ids = detect_aruco_markers(frame)
 
     if corners is None or corners.shape[0] != 4:
-        print(f"Error: Could not detect all 4 ArUco markers")
-        print(f"Found: {corners.shape[0] if corners is not None else 0}")
+        print("Error: Could not detect all 4 ArUco markers")
+        markers_found = corners.shape[0] if corners is not None else 0
+        print(f"Found: {markers_found}")
         sys.exit(1)
 
-    print(f"✓ Detected 4 ArUco markers")
+    print("✓ Detected 4 ArUco markers")
 
     # Run interactive patch placement
-    print(f"\nInstructions:")
-    print(f"  - Click on the CENTER of each of the {args.num_patches} color patches")
-    print(f"  - Left click: Add patch")
-    print(f"  - Right click: Remove last patch")
-    print(f"  - R: Reset all patches")
-    print(f"  - Space: Save when done")
-    print(f"  - Q: Quit without saving")
+    print("\nInstructions:")
+    print(
+        f"  - Click on the CENTER of each of the {args.num_patches} "
+        "color patches"
+    )
+    print("  - Left click: Add patch")
+    print("  - Right click: Remove last patch")
+    print("  - R: Reset all patches")
+    print("  - Space: Save when done")
+    print("  - Q: Quit without saving")
     print()
 
-    builder = AutolinearizerBuilder(frame, corners, args.num_patches)
+    builder = AutolinearizerBuilder(
+        frame, corners, args.num_patches
+    )
     patch_positions = builder.run()
 
     if patch_positions is None:
@@ -258,26 +278,32 @@ def main():
         sys.exit(0)
 
     # Load expected values from the calibration CSV
-    # This assumes you're using the same color chart as the default autolinearizer
-    import csv
-
+    # This assumes you're using the same color chart as the
+    # default autolinearizer
     calibration_csv = Path("data/aruco_samples.csv")
     camera_csv = Path("data/camera_sensitivities.csv")
 
     if calibration_csv.exists() and camera_csv.exists():
         # Load reflectance values (skip header row)
-        sample_ref = np.loadtxt(calibration_csv, delimiter=",", skiprows=1)
+        sample_ref = np.loadtxt(
+            calibration_csv, delimiter=",", skiprows=1
+        )
         # Load camera sensitivities (skip header row)
         camera_sense = np.loadtxt(camera_csv, delimiter=",", skiprows=1)
-        camera_sense = camera_sense / camera_sense.sum(axis=0, keepdims=True)
+        camera_sense = camera_sense / camera_sense.sum(
+            axis=0, keepdims=True
+        )
 
         # Calculate expected values: reflectance * camera_sensitivity
         expected_values = sample_ref.T.dot(camera_sense)
 
         # Limit to number of patches we have
-        expected_values = expected_values[: len(patch_positions)]
+        expected_values = expected_values[:len(patch_positions)]
     else:
-        print(f"\nWarning: Could not load calibration data, using placeholder values")
+        print(
+            "\nWarning: Could not load calibration data, "
+            "using placeholder values"
+        )
         # Use placeholder values (will need to be updated)
         expected_values = [[0.5, 0.5, 0.5, 0.5]] * len(patch_positions)
 
@@ -301,12 +327,18 @@ def main():
         json.dump(autolinearizer_data, f)
 
     print(f"\n✓ Autolinearizer saved to: {output_path}")
-    print(f"\nTo use this autolinearizer:")
-    print(f"  1. Update step2_extract_calibration.py to use '{output_path}'")
-    print(f"  OR")
-    print(f"  2. Replace data/autolinearizer.json with this file")
-    print(f"\nNote: This autolinearizer uses the marker and patch POSITIONS only.")
-    print(f"      It still uses the expected_values from data/aruco_samples.csv")
+    print("\nTo use this autolinearizer:")
+    print(
+        f"  1. Update step2_extract_calibration.py to use '{output_path}'"
+    )
+    print("  OR")
+    print("  2. Replace data/autolinearizer.json with this file")
+    print(
+        "\nNote: This autolinearizer uses the marker and patch POSITIONS only."
+    )
+    print(
+        "      It still uses the expected_values from data/aruco_samples.csv"
+    )
 
 
 if __name__ == "__main__":

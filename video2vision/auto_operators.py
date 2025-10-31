@@ -104,19 +104,21 @@ class AutoAlign(Warp, AutoOperator):
             to be passed as an argument so that a fit
             :class:`video2vision.AutoAlign` can be saved to disk and reloaded.
 
-            motion_type (str): Type of motion model to use for ECC alignment.
-            Choices: 'euclidean' (rotation + translation only, no scaling/skew),
-            'affine' (rotation + translation + scaling + shear, preserves parallel lines),
-            'homography' (full perspective transform including skew/warp).
-            Default: 'homography'. This only affects ECC method; ArUco always uses homography.
+            motion_type (str): Type of motion model for ECC alignment.
+            Choices: 'euclidean' (rotation + translation, no scaling),
+            'affine' (rotation + translation + scaling + shear,
+            preserves parallel lines), 'homography' (full perspective
+            transform including skew/warp). Default: 'homography'.
+            This only affects ECC method; ArUco always uses homography.
 
-            initial_transform (optional, :class:`numpy.ndarray`): Initial guess for
-            the transformation matrix to use as a starting point for ECC optimization.
-            This should be a 3x3 matrix. If provided, ECC will start from this
-            transformation and refine it, rather than starting from identity.
-            This is very useful when you have a rough alignment from a previous sample
-            or know the approximate transformation from your camera rig setup.
-            Only used by the ECC method.
+            initial_transform (optional, :class:`numpy.ndarray`):
+            Initial guess for the transformation matrix to use as a
+            starting point for ECC optimization. This should be a 3x3
+            matrix. If provided, ECC will start from this transformation
+            and refine it, rather than starting from identity. This is
+            useful when you have a rough alignment from a previous sample
+            or know the approximate transformation from your camera rig
+            setup. Only used by the ECC method.
         '''
         self.max_iterations = max_iterations
         self.eps = eps
@@ -129,7 +131,10 @@ class AutoAlign(Warp, AutoOperator):
         if motion_type not in {'euclidean', 'affine', 'homography'}:
             raise ValueError(f'Did not recognize motion_type {motion_type}')
         self.motion_type = motion_type
-        self.initial_transform = initial_transform if initial_transform is None else np.array(initial_transform)
+        if initial_transform is None:
+            self.initial_transform = None
+        else:
+            self.initial_transform = np.array(initial_transform)
         if coe is None:
             self.coe = self.output_size = None
         else:
@@ -320,14 +325,14 @@ class AutoAlign(Warp, AutoOperator):
                     motion_model,
                     (criteria, self.max_iterations, self.eps),
                     mask,
-                    # By default, the findTransformECC applies a Gaussian blur
-                    # to the image prior to running. We can't turn it off, but
-                    # we can set the kernel size to 1.
+                    # By default, findTransformECC applies a Gaussian blur
+                    # to the image prior to running. We can't turn it
+                    # off, but we can set the kernel size to 1.
                     1,
                 )
 
-                # For non-homography transforms, convert to 3x3 homography matrix
-                # so it's compatible with the Warp class
+                # For non-homography transforms, convert to 3x3
+                # homography matrix so it's compatible with Warp class
                 if self.motion_type in {'euclidean', 'affine'}:
                     self.coe = np.vstack([self.coe, [0, 0, 1]])
 
@@ -379,7 +384,10 @@ class AutoAlign(Warp, AutoOperator):
             'bands': self._concatenate.bands,
             'method': self.method,
             'motion_type': self.motion_type,
-            'initial_transform': (None if self.initial_transform is None else self.initial_transform.tolist()),
+            'initial_transform': (
+                None if self.initial_transform is None
+                else self.initial_transform.tolist()
+            ),
         }
 
 
@@ -575,17 +583,18 @@ class AutoTemporalAlign(AutoAlign, AutoOperator):
             :class:`video2vision.AutoTemporalAlign` can be saved to disk and
             reloaded.
 
-            time_shift (optional, int): The amount of the time shift. This is
-            ordinarily calculated from the first batch, but we allow it to be
-            passed as an argument so that a fit
-            :class:`video2vision.AutoTemporalAlign` can be saved to disk and
-            reloaded.
+            time_shift (optional, int): The amount of the time shift.
+            This is ordinarily calculated from the first batch, but we
+            allow it to be passed as an argument so that a fit
+            :class:`video2vision.AutoTemporalAlign` can be saved to
+            disk and reloaded.
 
             motion_type (str): Type of motion model to use for ECC alignment.
             See :class:`AutoAlign` for details.
 
-            initial_transform (optional, :class:`numpy.ndarray`): Initial guess for
-            the transformation matrix. See :class:`AutoAlign` for details.
+            initial_transform (optional, :class:`numpy.ndarray`):
+            Initial guess for the transformation matrix.
+            See :class:`AutoAlign` for details.
         '''
         super().__init__(
             max_iterations=max_iterations, eps=eps,

@@ -1,32 +1,42 @@
 #!/usr/bin/env python3
 """
-Step 3: Apply full pipeline - alignment, linearization, and animal vision conversion (AUTOMATED - SLOW).
+Step 3: Apply full pipeline - alignment, linearization, and animal
+vision conversion (AUTOMATED - SLOW).
 
-This reads alignment and calibration data from config.json files and applies the complete
-pipeline to generate animal vision videos. This is a single-pass operation with no intermediate
-video exports to avoid recompression.
+This reads alignment and calibration data from config.json files and
+applies the complete pipeline to generate animal vision videos. This
+is a single-pass operation with no intermediate video exports to avoid
+recompression.
 
-Pipeline: Loader → Flip → Warp (alignment) → Linearizer → SenseConverter → Writer
+Pipeline: Loader → Flip → Warp (alignment) → Linearizer →
+SenseConverter → Writer
 
 Usage (from project root):
     # Using module syntax:
     python -m scripts.step3_apply_full_pipeline --approved-only
-    python -m scripts.step3_apply_full_pipeline --approved-only --animal apis
-    python -m scripts.step3_apply_full_pipeline --samples 001 006 012 --animal avian
+    python -m scripts.step3_apply_full_pipeline \
+        --approved-only --animal apis
+    python -m scripts.step3_apply_full_pipeline \
+        --samples 001 006 012 --animal avian
 
     # Or if video2vision is installed:
     python scripts/step3_apply_full_pipeline.py --approved-only
-    python scripts/step3_apply_full_pipeline.py --approved-only --animal apis
-    python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --animal avian
+    python scripts/step3_apply_full_pipeline.py \
+        --approved-only --animal apis
+    python scripts/step3_apply_full_pipeline.py \
+        --samples 001 006 012 --animal avian
 
     # Process all samples (ignore review status)
-    python scripts/step3_apply_full_pipeline.py --all --animal bombus_terrestris_dalmaticus
+    python scripts/step3_apply_full_pipeline.py \
+        --all --animal bombus_terrestris_dalmaticus
 
     # Output aligned videos only (no color science transformations)
-    python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+    python scripts/step3_apply_full_pipeline.py \
+        --approved-only --aligned-only
 
     # Preview mode with aligned-only
-    python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview 30
+    python scripts/step3_apply_full_pipeline.py \
+        --samples 001 --aligned-only --preview 30
 """
 
 import argparse
@@ -38,8 +48,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from video2vision import io, pipeline, operators, elementwise, auto_operators
-from video2vision.operators import HorizontalFlip, VerticalFlip, ConcatenateOnBands
+from video2vision import io, pipeline, operators, elementwise
+from video2vision.operators import (
+    HorizontalFlip, VerticalFlip, ConcatenateOnBands
+)
 from video2vision.warp import Warp
 from video2vision.auto_operators import AutoTemporalAlign
 from video2vision.io import OutOfInputs
@@ -57,20 +69,23 @@ except ImportError:
 
 
 class PreviewLoader(io.Loader):
-    """Loader wrapper that limits the number of frames processed for preview mode.
+    """Loader wrapper that limits frames for preview mode.
 
-    This wraps a standard Loader and stops yielding frames after max_frames,
-    without requiring video re-encoding.
+    This wraps a standard Loader and stops yielding frames after
+    max_frames, without requiring video re-encoding.
     """
 
-    def __init__(self, path, expected_size, batch_size=1, num_channels=3, max_frames=None):
+    def __init__(
+        self, path, expected_size, batch_size=1,
+        num_channels=3, max_frames=None
+    ):
         """
         Args:
             path: Path to video/images
             expected_size: Expected (width, height)
             batch_size: Frames per batch
             num_channels: Number of channels
-            max_frames: Maximum total frames to process (None = unlimited)
+            max_frames: Max frames to process (None = unlimited)
         """
         super().__init__(path, expected_size, batch_size, num_channels)
         self.max_frames = max_frames
@@ -78,7 +93,11 @@ class PreviewLoader(io.Loader):
 
     def apply(self):
         """Override apply to stop after max_frames"""
-        if self.max_frames is not None and self.frames_yielded >= self.max_frames:
+        max_reached = (
+            self.max_frames is not None and
+            self.frames_yielded >= self.max_frames
+        )
+        if max_reached:
             raise OutOfInputs("Preview frame limit reached")
 
         # Call parent's apply
@@ -95,13 +114,18 @@ class PreviewLoader(io.Loader):
             self.frames_yielded += frames_in_batch
 
             # If we've exceeded max_frames, trim this batch
-            if self.max_frames is not None and self.frames_yielded > self.max_frames:
+            exceeded = (
+                self.max_frames is not None and
+                self.frames_yielded > self.max_frames
+            )
+            if exceeded:
                 excess = self.frames_yielded - self.max_frames
                 frames_to_keep = frames_in_batch - excess
 
                 if result['image'].ndim == 4:
                     # Trim the time dimension
-                    result['image'] = result['image'][:, :, :frames_to_keep, :]
+                    img = result['image']
+                    result['image'] = img[:, :, :frames_to_keep, :]
                     if 'names' in result:
                         result['names'] = result['names'][:frames_to_keep]
 
@@ -116,7 +140,8 @@ def load_pipeline_config(config_path=None):
     """Load global pipeline configuration
 
     Args:
-        config_path: Optional path to config file (default: videos/samples/pipeline_config.json)
+        config_path: Optional path to config file
+            (default: videos/samples/pipeline_config.json)
     """
     if config_path is None:
         config_path = Path("videos/samples/pipeline_config.json")
@@ -125,7 +150,8 @@ def load_pipeline_config(config_path=None):
 
     if not config_path.exists():
         print(f"Error: Pipeline config not found at {config_path}")
-        print("Please create pipeline_config.json with camera and animal settings.")
+        msg = "camera and animal settings"
+        print(f"Please create pipeline_config.json with {msg}.")
         sys.exit(1)
 
     with open(config_path, "r") as f:
@@ -149,9 +175,11 @@ def load_csv(path, normalize=False, skip_wavelength=False):
     Args:
         path: Path to CSV file
         normalize: If True, normalize each column
-        skip_wavelength: If True, skip first column (assumes it's wavelength metadata)
+        skip_wavelength: If True, skip first column
+            (assumes it's wavelength metadata)
     """
-    data = np.loadtxt(path, delimiter=",", skiprows=1)  # Skip header row
+    # Skip header row
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
     if skip_wavelength:
         # Skip first column (wavelength)
         data = data[:, 1:]
@@ -164,7 +192,8 @@ def load_csv(path, normalize=False, skip_wavelength=False):
         # Normalize each column
         summand = data.sum(0, keepdims=True)
         if (np.abs(summand - 1) > 1e-2).any():
-            print(f'Warning: Columns in {path} do not sum to 1: {summand.flatten()}. Normalizing.')
+            msg = f'Columns in {path} do not sum to 1:'
+            print(f'Warning: {msg} {summand.flatten()}. Normalizing.')
         data /= summand
 
     return data
@@ -174,7 +203,8 @@ def build_linearizer(calibration_patches, pipeline_config):
     """Build linearizer operator from calibration patch data
 
     Args:
-        calibration_patches: Dict with 'patch_values_vis', 'patch_values_uv', 'num_patches'
+        calibration_patches: Dict with 'patch_values_vis',
+            'patch_values_uv', 'num_patches'
         pipeline_config: Global pipeline configuration
 
     Returns:
@@ -189,7 +219,8 @@ def build_linearizer(calibration_patches, pipeline_config):
     if isinstance(calibration_config, dict):
         # New format: multiple paths keyed by patch count
         # Convert string keys to integers for comparison
-        patch_count_map = {int(k): v for k, v in calibration_config.items()}
+        items = calibration_config.items()
+        patch_count_map = {int(k): v for k, v in items}
 
         # Use exact match first, then fall back to closest available
         if num_patches in patch_count_map:
@@ -201,17 +232,19 @@ def build_linearizer(calibration_patches, pipeline_config):
                 print("Error: No calibration paths defined in config")
                 return None
 
-            # Use the largest available that's <= num_patches, or smallest if all are larger
-            suitable = [c for c in available_counts if c <= num_patches]
+            # Use the largest available that's <= num_patches,
+            # or smallest if all are larger
+            suitable = [
+                c for c in available_counts if c <= num_patches
+            ]
             if suitable:
                 chosen = max(suitable)
             else:
                 chosen = min(available_counts)
 
             calibration_values_path = patch_count_map[chosen]
-            print(
-                f"    Note: Using {chosen}-patch calibration for {num_patches} patches"
-            )
+            msg = f"{chosen}-patch calibration for {num_patches} patches"
+            print(f"    Note: Using {msg}")
     else:
         # Legacy format: single path string
         calibration_values_path = calibration_config
@@ -219,25 +252,35 @@ def build_linearizer(calibration_patches, pipeline_config):
     camera_path = pipeline_config["camera_sensitivities_path"]
 
     print(f"    Loading calibration CSV: {calibration_values_path}")
-    sample_ref = load_csv(calibration_values_path, skip_wavelength=True)
-    camera_sense = load_csv(camera_path, normalize=True, skip_wavelength=True)
+    sample_ref = load_csv(
+        calibration_values_path, skip_wavelength=True
+    )
+    camera_sense = load_csv(
+        camera_path, normalize=True, skip_wavelength=True
+    )
 
     # Calculate expected values: reflectance * camera_sensitivity
     expected_values = sample_ref.T.dot(camera_sense)
-    print(f"    Expected values range: [{expected_values.min():.4f}, {expected_values.max():.4f}]")
+    min_val = expected_values.min()
+    max_val = expected_values.max()
+    print(f"    Expected values range: [{min_val:.4f}, {max_val:.4f}]")
 
     # Extract patch values from calibration data
     # Patches are stored as {"b": ..., "g": ..., "r": ...} from BGR videos
+    patches_vis = calibration_patches["patch_values_vis"]
     vis_patches = np.array(
-        [[p["b"], p["g"], p["r"]] for p in calibration_patches["patch_values_vis"]]
+        [[p["b"], p["g"], p["r"]] for p in patches_vis]
     )
+    patches_uv = calibration_patches["patch_values_uv"]
     uv_patches = np.array(
-        [[p["b"], p["g"], p["r"]] for p in calibration_patches["patch_values_uv"]]
+        [[p["b"], p["g"], p["r"]] for p in patches_uv]
     )
 
     # Combine: [UV_R, VIS_B, VIS_G, VIS_R]
     # UV channel 2 (R in BGR) contains UV light, VIS is full BGR
-    samples = np.concatenate((uv_patches[:, [2]], vis_patches), axis=1)
+    samples = np.concatenate(
+        (uv_patches[:, [2]], vis_patches), axis=1
+    )
 
     # Truncate to match number of patches (handle 8 vs 24 patch cases)
     num_patches = min(len(samples), len(expected_values))
@@ -247,14 +290,12 @@ def build_linearizer(calibration_patches, pipeline_config):
     # Build linearizer based on camera type
     if pipeline_config.get("is_sony_camera", False):
         # Use Sony SLog3 PowerLaw function
-        line_op = elementwise.PowerLaw(
-            [
-                [0.0047058172145495476, 4185.031519941784, -0.01, 0.16736099187966763],
-                [0.0047058172145495476, 4185.031519941784, -0.01, 0.16736099187966763],
-                [0.0047058172145495476, 4185.031519941784, -0.01, 0.16736099187966763],
-                [0.0047058172145495476, 4185.031519941784, -0.01, 0.16736099187966763],
-            ]
-        )
+        # Sony SLog3 PowerLaw parameters (same for all 4 channels)
+        params = [
+            0.0047058172145495476, 4185.031519941784,
+            -0.01, 0.16736099187966763
+        ]
+        line_op = elementwise.PowerLaw([params] * 4)
 
         # Apply linearization and fit scale factors
         linearized_sample_values = line_op.apply_values(samples)
@@ -269,8 +310,12 @@ def build_linearizer(calibration_patches, pipeline_config):
 
         # Debug: check linearizer output range
         final_linearized = line_op.apply_values(samples)
-        print(f"    Linearized output range: [{final_linearized.min():.4f}, {final_linearized.max():.4f}]")
-        print(f"    Measured samples range: [{samples.min():.4f}, {samples.max():.4f}]")
+        lin_min = final_linearized.min()
+        lin_max = final_linearized.max()
+        print(f"    Linearized output range: [{lin_min:.4f}, {lin_max:.4f}]")
+        samp_min = samples.min()
+        samp_max = samples.max()
+        print(f"    Measured samples range: [{samp_min:.4f}, {samp_max:.4f}]")
 
     else:
         # Use polynomial fitting (power law)
@@ -289,16 +334,18 @@ def load_sense_converter(animal_type):
     """Load pre-built sense converter for animal vision
 
     Args:
-        animal_type: Name of animal (e.g., 'apis', 'avian', 'bombus_terrestris_dalmaticus')
+        animal_type: Name of animal (e.g., 'apis', 'avian',
+            'bombus_terrestris_dalmaticus')
 
     Returns:
-        Operator for converting linearized camera values to animal vision
+        Operator for converting linearized camera values to
+        animal vision
     """
     converter_path = Path("data/converters") / f"{animal_type}_converter.json"
 
     if not converter_path.exists():
         print(f"Error: Sense converter not found: {converter_path}")
-        print(f"\nAvailable converters:")
+        print("\nAvailable converters:")
         converters_dir = Path("data/converters")
         if converters_dir.exists():
             for conv in sorted(converters_dir.glob("*_converter.json")):
@@ -329,15 +376,22 @@ def find_video_pair(sample_dir):
     return str(vis_videos[0]), str(uv_videos[0])
 
 
-def copy_audio_to_video(source_video, target_video, output_video=None, audio_offset_frames=0, source_fps=None):
-    """Copy audio from source video to target video using ffmpeg, with optional temporal offset
+def copy_audio_to_video(
+    source_video, target_video, output_video=None,
+    audio_offset_frames=0, source_fps=None
+):
+    """Copy audio from source to target using ffmpeg
 
     Args:
         source_video: Path to video with audio
-        target_video: Path to video without audio (will be replaced if output_video is None)
-        output_video: Optional output path (if None, replaces target_video)
-        audio_offset_frames: Number of frames to offset audio (positive = delay audio, negative = advance audio)
-        source_fps: FPS of source video (required if audio_offset_frames != 0)
+        target_video: Path to video without audio
+            (will be replaced if output_video is None)
+        output_video: Optional output path
+            (if None, replaces target_video)
+        audio_offset_frames: Number of frames to offset audio
+            (positive = delay audio, negative = advance audio)
+        source_fps: FPS of source video
+            (required if audio_offset_frames != 0)
 
     Returns:
         True if successful, False otherwise
@@ -358,23 +412,26 @@ def copy_audio_to_video(source_video, target_video, output_video=None, audio_off
             "ffmpeg",
             "-i", str(target_video),  # Video source (no audio)
             "-i", str(source_video),  # Audio source
-            "-c:v", "copy",           # Copy video codec (no re-encode)
+            "-c:v", "copy",           # Copy video (no re-encode)
             "-c:a", "aac",            # Encode audio as AAC
-            "-map", "0:v:0",          # Take video from first input
-            "-map", "1:a:0?",         # Take audio from second input (? makes it optional)
+            "-map", "0:v:0",          # Take video from input 1
+            # Take audio from input 2 (? makes it optional)
+            "-map", "1:a:0?",
         ]
 
         # Apply temporal offset if needed
         if audio_offset_frames != 0:
             if source_fps is None:
-                raise ValueError("source_fps required when audio_offset_frames != 0")
+                msg = "source_fps required when audio_offset_frames != 0"
+                raise ValueError(msg)
 
             # Convert frame offset to seconds
             offset_seconds = audio_offset_frames / source_fps
 
             if offset_seconds > 0:
                 # Positive offset: delay audio (add silence at start)
-                cmd.extend(["-af", f"adelay={int(offset_seconds * 1000)}|{int(offset_seconds * 1000)}"])
+                delay_ms = int(offset_seconds * 1000)
+                cmd.extend(["-a", f"adelay={delay_ms}|{delay_ms}"])
             else:
                 # Negative offset: advance audio (skip audio from start)
                 # Note: we need to insert this BEFORE the audio input
@@ -396,7 +453,9 @@ def copy_audio_to_video(source_video, target_video, output_video=None, audio_off
 
         if result.returncode != 0:
             # Audio might not exist in source, which is okay
-            if "does not contain any stream" in result.stderr or "No such stream" in result.stderr:
+            no_stream = "does not contain any stream" in result.stderr
+            no_such = "No such stream" in result.stderr
+            if no_stream or no_such:
                 return False
             else:
                 print(f"    Warning: ffmpeg error: {result.stderr[:100]}")
@@ -416,14 +475,17 @@ def copy_audio_to_video(source_video, target_video, output_video=None, audio_off
         return False
 
 
-def trim_video(input_path, output_path, start_frame=0, max_frames=None):
+def trim_video(
+    input_path, output_path, start_frame=0, max_frames=None
+):
     """Trim video starting from a specific frame
 
     Args:
         input_path: Path to input video
         output_path: Path to output video
         start_frame: Frame to start from (default: 0)
-        max_frames: Maximum number of frames to write (default: None = all)
+        max_frames: Maximum number of frames to write
+            (default: None = all)
 
     Returns:
         Number of frames written
@@ -435,7 +497,8 @@ def trim_video(input_path, output_path, start_frame=0, max_frames=None):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+    size = (width, height)
+    out = cv2.VideoWriter(str(output_path), fourcc, fps, size)
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     frame_count = 0
@@ -465,18 +528,20 @@ def apply_alignment_only(
 ):
     """Apply alignment transformation only (no color science)
 
-    This outputs the original videos with only the alignment transformation applied.
-    UV video gets flipped (if needed) and warped to match VIS dimensions.
-    VIS video is output as-is (possibly trimmed if preview mode is active).
+    This outputs the original videos with only the alignment
+    transformation applied. UV video gets flipped (if needed) and
+    warped to match VIS dimensions. VIS video is output as-is
+    (possibly trimmed if preview mode is active).
 
     Args:
         vis_path: Path to visible video
         uv_path: Path to UV video
-        alignment_params: Dict with 'homography_matrix', 'flip', 'temporal_shift'
+        alignment_params: Dict with 'homography_matrix', 'flip',
+            'temporal_shift'
         aligned_vis_output_path: Where to save aligned VIS video
-        aligned_uv_output_path: Where to save aligned UV video (warped)
+        aligned_uv_output_path: Where to save aligned UV video
         batch_size: Frames to process per batch
-        preview_frames: If set, only process first N frames (preview mode)
+        preview_frames: If set, only process first N frames
     """
     # Get video dimensions from VIS (reference)
     cap_vis = cv2.VideoCapture(vis_path)
@@ -496,35 +561,46 @@ def apply_alignment_only(
     if alignment_params.get("output_size"):
         alignment_output = tuple(alignment_params["output_size"])
         if alignment_output != expected_size:
-            print(
-                f"Warning: Alignment output size {alignment_output} doesn't match VIS size {expected_size}"
+            msg = (
+                f"Alignment output size {alignment_output} "
+                f"doesn't match VIS size {expected_size}"
             )
+            print(f"Warning: {msg}")
             expected_size = alignment_output
     elif alignment_params.get("homography_matrix"):
         if (uv_width, uv_height) != expected_size:
-            raise ValueError(
-                f"Video size mismatch: UV is {uv_width}x{uv_height} but VIS is {vis_width}x{vis_height}. "
-                f"Run step1b again to regenerate alignment with correct output_size."
+            msg = (
+                f"Video size mismatch: UV is {uv_width}x{uv_height} "
+                f"but VIS is {vis_width}x{vis_height}. "
+                "Run step1b again to regenerate alignment with "
+                "correct output_size."
             )
+            raise ValueError(msg)
 
     # Build pipeline for aligned outputs
     pipe = pipeline.Pipeline()
 
     # Loaders - use PreviewLoader if in preview mode
     if preview_frames is not None:
-        vis_loader_idx = pipe.add_operator(
-            PreviewLoader(vis_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        vis_loader = PreviewLoader(
+            vis_path, expected_size=expected_size,
+            batch_size=batch_size, max_frames=preview_frames
         )
-        uv_loader_idx = pipe.add_operator(
-            PreviewLoader(uv_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        vis_loader_idx = pipe.add_operator(vis_loader)
+        uv_loader = PreviewLoader(
+            uv_path, expected_size=expected_size,
+            batch_size=batch_size, max_frames=preview_frames
         )
+        uv_loader_idx = pipe.add_operator(uv_loader)
     else:
-        vis_loader_idx = pipe.add_operator(
-            io.Loader(vis_path, expected_size=expected_size, batch_size=batch_size)
+        vis_loader = io.Loader(
+            vis_path, expected_size=expected_size, batch_size=batch_size
         )
-        uv_loader_idx = pipe.add_operator(
-            io.Loader(uv_path, expected_size=expected_size, batch_size=batch_size)
+        vis_loader_idx = pipe.add_operator(vis_loader)
+        uv_loader = io.Loader(
+            uv_path, expected_size=expected_size, batch_size=batch_size
         )
+        uv_loader_idx = pipe.add_operator(uv_loader)
 
     # Apply flip to UV if needed
     current_uv_idx = uv_loader_idx
@@ -542,7 +618,8 @@ def apply_alignment_only(
     # Apply homography warp to UV
     if alignment_params.get("homography_matrix"):
         homography = np.array(alignment_params["homography_matrix"])
-        output_size = tuple(alignment_params.get("output_size", expected_size))
+        out_size_param = alignment_params.get("output_size", expected_size)
+        output_size = tuple(out_size_param)
 
         warp_op = Warp(homography, output_size=output_size)
         warp_idx = pipe.add_operator(warp_op)
@@ -553,8 +630,10 @@ def apply_alignment_only(
     uv_writer_idx = pipe.add_operator(io.Writer(str(aligned_uv_output_path)))
     pipe.add_edge(current_uv_idx, uv_writer_idx, in_slot=0)
 
-    # Writer for VIS (pass-through, just for temporal alignment if needed)
-    vis_writer_idx = pipe.add_operator(io.Writer(str(aligned_vis_output_path)))
+    # Writer for VIS (pass-through for temporal alignment if needed)
+    vis_writer_idx = pipe.add_operator(
+        io.Writer(str(aligned_vis_output_path))
+    )
     pipe.add_edge(vis_loader_idx, vis_writer_idx, in_slot=0)
 
     # Run pipeline
@@ -563,8 +642,12 @@ def apply_alignment_only(
 
     # Copy audio from original videos to aligned outputs
     print("    Copying audio... ", end="", flush=True)
-    vis_audio_success = copy_audio_to_video(vis_path, aligned_vis_output_path)
-    uv_audio_success = copy_audio_to_video(uv_path, aligned_uv_output_path)
+    vis_audio_success = copy_audio_to_video(
+        vis_path, aligned_vis_output_path
+    )
+    uv_audio_success = copy_audio_to_video(
+        uv_path, aligned_uv_output_path
+    )
 
     if vis_audio_success or uv_audio_success:
         audio_status = []
@@ -575,7 +658,6 @@ def apply_alignment_only(
         print(f"✓ ({', '.join(audio_status)})")
     else:
         print("⊘ (no audio tracks)")
-
 
 
 def apply_full_pipeline(
@@ -589,21 +671,25 @@ def apply_full_pipeline(
     batch_size=30,
     preview_frames=None,
 ):
-    """Apply complete pipeline: alignment → linearization → animal vision conversion
+    """Apply complete pipeline
 
-    This implementation matches the Video-Analysis.ipynb notebook's logic by using
-    AutoTemporalAlign to handle temporal shift internally (without video re-encoding).
+    Pipeline: alignment → linearization → animal vision conversion
+
+    This implementation matches the Video-Analysis.ipynb notebook's
+    logic by using AutoTemporalAlign to handle temporal shift
+    internally (without video re-encoding).
 
     Args:
         vis_path: Path to visible video
         uv_path: Path to UV video
-        alignment_params: Dict with 'homography_matrix', 'flip', 'temporal_shift'
+        alignment_params: Dict with 'homography_matrix', 'flip',
+            'temporal_shift'
         linearizer: Linearization operator
         sense_converter: Animal vision conversion operator
         animal_output_path: Where to save animal vision video
         human_output_path: Where to save human vision video
         batch_size: Frames to process per batch
-        preview_frames: If set, only process first N frames (preview mode)
+        preview_frames: If set, only process first N frames
     """
     # Get video dimensions from VIS (reference)
     cap_vis = cv2.VideoCapture(vis_path)
@@ -623,25 +709,30 @@ def apply_full_pipeline(
     if alignment_params.get("output_size"):
         alignment_output = tuple(alignment_params["output_size"])
         if alignment_output != expected_size:
-            print(
-                f"Warning: Alignment output size {alignment_output} doesn't match VIS size {expected_size}"
+            msg = (
+                f"Alignment output size {alignment_output} "
+                f"doesn't match VIS size {expected_size}"
             )
+            print(f"Warning: {msg}")
             # Use alignment output size as the canonical size
             expected_size = alignment_output
     elif alignment_params.get("homography_matrix"):
-        # If there's a homography but no explicit output_size, the warp will use UV dimensions
-        # This could cause a mismatch if UV and VIS have different sizes
+        # If there's a homography but no explicit output_size,
+        # the warp will use UV dimensions. This could cause a
+        # mismatch if UV and VIS have different sizes
         if (uv_width, uv_height) != expected_size:
-            print(
-                f"Warning: UV size ({uv_width}x{uv_height}) != VIS size ({vis_width}x{vis_height})"
+            uv_size = f"({uv_width}x{uv_height})"
+            vis_size = f"({vis_width}x{vis_height})"
+            print(f"Warning: UV size {uv_size} != VIS size {vis_size}")
+            print(f"         Warp output will be {uv_size}, "
+                  f"but VIS is {vis_size}")
+            msg = (
+                f"Video size mismatch: UV is {uv_width}x{uv_height} "
+                f"but VIS is {vis_width}x{vis_height}. "
+                "Run step1b again to regenerate alignment with "
+                "correct output_size."
             )
-            print(
-                f"         Warp output will be ({uv_width}x{uv_height}), but VIS is ({vis_width}x{vis_height})"
-            )
-            raise ValueError(
-                f"Video size mismatch: UV is {uv_width}x{uv_height} but VIS is {vis_width}x{vis_height}. "
-                f"Run step1b again to regenerate alignment with correct output_size."
-            )
+            raise ValueError(msg)
 
     # Get temporal shift (manual override or from alignment)
     temporal_shift = alignment_params.get("temporal_shift", 0) or 0
@@ -651,21 +742,27 @@ def apply_full_pipeline(
 
     # Loaders - use PreviewLoader if in preview mode
     if preview_frames is not None:
-        vis_loader_idx = pipe.add_operator(
-            PreviewLoader(vis_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        vis_loader = PreviewLoader(
+            vis_path, expected_size=expected_size,
+            batch_size=batch_size, max_frames=preview_frames
         )
-        uv_loader_idx = pipe.add_operator(
-            PreviewLoader(uv_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        vis_loader_idx = pipe.add_operator(vis_loader)
+        uv_loader = PreviewLoader(
+            uv_path, expected_size=expected_size,
+            batch_size=batch_size, max_frames=preview_frames
         )
+        uv_loader_idx = pipe.add_operator(uv_loader)
     else:
-        vis_loader_idx = pipe.add_operator(
-            io.Loader(vis_path, expected_size=expected_size, batch_size=batch_size)
+        vis_loader = io.Loader(
+            vis_path, expected_size=expected_size, batch_size=batch_size
         )
-        uv_loader_idx = pipe.add_operator(
-            io.Loader(uv_path, expected_size=expected_size, batch_size=batch_size)
+        vis_loader_idx = pipe.add_operator(vis_loader)
+        uv_loader = io.Loader(
+            uv_path, expected_size=expected_size, batch_size=batch_size
         )
+        uv_loader_idx = pipe.add_operator(uv_loader)
 
-    # Apply flip to UV if needed (this matches the coarse warp in alignment pipeline)
+    # Apply flip to UV if needed (matches coarse warp in alignment)
     current_uv_idx = uv_loader_idx
     flip_type = alignment_params.get("flip", "none")
 
@@ -679,26 +776,34 @@ def apply_full_pipeline(
         current_uv_idx = flip_idx
 
     # Create AutoTemporalAlign operator with pre-set parameters
-    # This matches how the notebook loads a saved alignment and applies it
+    # Matches how the notebook loads a saved alignment and applies it
     homography = np.array(alignment_params["homography_matrix"])
-    output_size = tuple(alignment_params.get("output_size", expected_size))
+    out_size_param = alignment_params.get("output_size", expected_size)
+    output_size = tuple(out_size_param)
 
     # Use AutoTemporalAlign even though we're not auto-detecting
     # This gives us the same temporal shift logic as the notebook
     align_op = AutoTemporalAlign(
-        time_shift_range=[0, 0],  # Not used since we're setting time_shift directly
-        bands=[[2], [0, 1, 2]],  # Extract UV_R + VIS_BGR (matches notebook line 194)
-        coe=homography,  # Pre-set homography from alignment
+        # Not used since we're setting time_shift directly
+        time_shift_range=[0, 0],
+        # Extract UV_R + VIS_BGR (matches notebook line 194)
+        bands=[[2], [0, 1, 2]],
+        # Pre-set homography from alignment
+        coe=homography,
         output_size=output_size,
-        time_shift=temporal_shift,  # Manual temporal shift override
+        # Manual temporal shift override
+        time_shift=temporal_shift,
     )
 
     # Add alignment operator to pipeline
     align_idx = pipe.add_operator(align_op)
-    pipe.add_edge(current_uv_idx, align_idx, in_slot=0)  # UV input
-    pipe.add_edge(vis_loader_idx, align_idx, in_slot=1)  # VIS input
+    # UV input
+    pipe.add_edge(current_uv_idx, align_idx, in_slot=0)
+    # VIS input
+    pipe.add_edge(vis_loader_idx, align_idx, in_slot=1)
 
-    # The AutoTemporalAlign operator outputs [UV_R, VIS_B, VIS_G, VIS_R]
+    # The AutoTemporalAlign operator outputs
+    # [UV_R, VIS_B, VIS_G, VIS_R]
     # This matches the notebook's architecture exactly
 
     # Apply linearization
@@ -713,8 +818,10 @@ def apply_full_pipeline(
     animal_writer_idx = pipe.add_operator(io.Writer(str(animal_output_path)))
     pipe.add_edge(sense_idx, animal_writer_idx, in_slot=0)
 
-    # Create human vision output (bands 1-3 from linearized data: VIS_B, VIS_G, VIS_R)
-    # Linearized data is [UV_R, VIS_B, VIS_G, VIS_R], so bands 1-3 give BGR for OpenCV Writer
+    # Create human vision output (bands 1-3 from linearized data:
+    # VIS_B, VIS_G, VIS_R). Linearized data is
+    # [UV_R, VIS_B, VIS_G, VIS_R], so bands 1-3 give BGR
+    # for OpenCV Writer
     human_sel_idx = pipe.add_operator(ConcatenateOnBands([[1, 2, 3]]))
     pipe.add_edge(line_idx, human_sel_idx, in_slot=0)
 
@@ -722,20 +829,27 @@ def apply_full_pipeline(
     human_writer_idx = pipe.add_operator(io.Writer(str(human_output_path)))
     pipe.add_edge(human_sel_idx, human_writer_idx, in_slot=0)
 
-    # Run pipeline - batch size matches notebook (divided by 2 for full pipeline)
+    # Run pipeline - batch size matches notebook
+    # (divided by 2 for full pipeline)
     pipe.set_batch_size(batch_size // 2)
     pipe.run()
 
     # Copy audio from VIS video to both outputs
-    # The VIS video is the reference, so its audio timing is correct for the output
-    # The temporal_shift was applied internally by AutoTemporalAlign, so the output
-    # video frames are already synchronized with the VIS audio timeline
+    # The VIS video is the reference, so its audio timing is
+    # correct for the output. The temporal_shift was applied
+    # internally by AutoTemporalAlign, so the output video frames
+    # are already synchronized with the VIS audio timeline
     print("    Copying audio... ", end="", flush=True)
 
     # Copy audio from VIS to both animal and human outputs
-    # No offset needed because the pipeline output is already aligned to VIS timeline
-    animal_audio_success = copy_audio_to_video(vis_path, animal_output_path)
-    human_audio_success = copy_audio_to_video(vis_path, human_output_path)
+    # No offset needed because the pipeline output is already
+    # aligned to VIS timeline
+    animal_audio_success = copy_audio_to_video(
+        vis_path, animal_output_path
+    )
+    human_audio_success = copy_audio_to_video(
+        vis_path, human_output_path
+    )
 
     if animal_audio_success or human_audio_success:
         audio_status = []
@@ -748,8 +862,12 @@ def apply_full_pipeline(
         print("⊘ (no audio track)")
 
 
-def generate_ghosting_image(vis_path, uv_path, alignment_params, output_path):
-    """Generate ghosting check image (R/B from VIS, G from aligned UV)
+def generate_ghosting_image(
+    vis_path, uv_path, alignment_params, output_path
+):
+    """Generate ghosting check image
+
+    Composite: R/B from VIS, G from aligned UV
 
     Args:
         vis_path: Path to VIS video
@@ -785,7 +903,10 @@ def generate_ghosting_image(vis_path, uv_path, alignment_params, output_path):
     if alignment_params.get("homography_matrix"):
         homography = np.array(alignment_params["homography_matrix"])
         height, width = vis_float.shape[:2]
-        output_size = tuple(alignment_params.get("output_size", (width, height)))
+        out_size_param = alignment_params.get(
+            "output_size", (width, height)
+        )
+        output_size = tuple(out_size_param)
 
         warp_op = Warp(homography, output_size=output_size)
         uv_aligned_dict = warp_op.apply({"image": uv_float})
@@ -801,7 +922,8 @@ def generate_ghosting_image(vis_path, uv_path, alignment_params, output_path):
     composite[:, :, 2] = vis_float[:, :, 2]  # Red from VIS
 
     # Save
-    composite_uint8 = (np.clip(composite, 0, 1) * 255).astype(np.uint8)
+    clipped = np.clip(composite, 0, 1)
+    composite_uint8 = (clipped * 255).astype(np.uint8)
     cv2.imwrite(str(output_path), composite_uint8)
 
     return True
@@ -846,7 +968,10 @@ def generate_pipeline_analysis(
     print("    - Ghosting image... ", end="", flush=True)
     try:
         ghosting_path = analysis_dir / "alignment_ghosting.png"
-        if generate_ghosting_image(vis_path, uv_path, alignment_params, ghosting_path):
+        ghosting_success = generate_ghosting_image(
+            vis_path, uv_path, alignment_params, ghosting_path
+        )
+        if ghosting_success:
             print("✓")
         else:
             print("✗")
@@ -861,13 +986,19 @@ def generate_pipeline_analysis(
         calibration_config = pipeline_config.get("calibration_values_path")
 
         if isinstance(calibration_config, dict):
-            patch_count_map = {int(k): v for k, v in calibration_config.items()}
+            items = calibration_config.items()
+            patch_count_map = {int(k): v for k, v in items}
             if num_patches in patch_count_map:
                 calibration_values_path = patch_count_map[num_patches]
             else:
                 available_counts = sorted(patch_count_map.keys())
-                suitable = [c for c in available_counts if c <= num_patches]
-                chosen = max(suitable) if suitable else min(available_counts)
+                suitable = [
+                    c for c in available_counts if c <= num_patches
+                ]
+                if suitable:
+                    chosen = max(suitable)
+                else:
+                    chosen = min(available_counts)
                 calibration_values_path = patch_count_map[chosen]
         else:
             calibration_values_path = calibration_config
@@ -875,21 +1006,31 @@ def generate_pipeline_analysis(
         camera_path = pipeline_config["camera_sensitivities_path"]
 
         # Load expected values
-        sample_ref = load_csv(calibration_values_path, skip_wavelength=True)
-        camera_sense = load_csv(camera_path, normalize=True, skip_wavelength=True)
+        sample_ref = load_csv(
+            calibration_values_path, skip_wavelength=True
+        )
+        camera_sense = load_csv(
+            camera_path, normalize=True, skip_wavelength=True
+        )
         expected_values = sample_ref.T.dot(camera_sense)
 
         # Extract measured values
+        patches_vis = calibration_patches["patch_values_vis"]
         vis_patches = np.array(
-            [[p["b"], p["g"], p["r"]] for p in calibration_patches["patch_values_vis"]]
+            [[p["b"], p["g"], p["r"]] for p in patches_vis]
         )
+        patches_uv = calibration_patches["patch_values_uv"]
         uv_patches = np.array(
-            [[p["b"], p["g"], p["r"]] for p in calibration_patches["patch_values_uv"]]
+            [[p["b"], p["g"], p["r"]] for p in patches_uv]
         )
 
-        measured_samples = np.concatenate((uv_patches[:, [2]], vis_patches), axis=1)
+        measured_samples = np.concatenate(
+            (uv_patches[:, [2]], vis_patches), axis=1
+        )
 
-        num_patches_actual = min(len(measured_samples), len(expected_values))
+        num_patches_actual = min(
+            len(measured_samples), len(expected_values)
+        )
         measured_samples = measured_samples[:num_patches_actual]
         expected_values_truncated = expected_values[:num_patches_actual]
 
@@ -901,25 +1042,27 @@ def generate_pipeline_analysis(
         band_names = ["UV", "Red", "Green", "Blue"]
 
         for band in range(4):
-            residuals = linearized_values[:, band] - expected_values_truncated[:, band]
+            lin_band = linearized_values[:, band]
+            exp_band = expected_values_truncated[:, band]
+            residuals = lin_band - exp_band
             mae = np.mean(np.abs(residuals))
             ss_res = np.sum(residuals**2)
+            mean_exp = expected_values_truncated[:, band].mean()
             ss_tot = np.sum(
-                (
-                    expected_values_truncated[:, band]
-                    - expected_values_truncated[:, band].mean()
-                )
-                ** 2
+                (expected_values_truncated[:, band] - mean_exp) ** 2
             )
             r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
-            metrics[band_names[band]] = {"MAE": float(mae), "R2": float(r2)}
+            metrics[band_names[band]] = {
+                "MAE": float(mae), "R2": float(r2)
+            }
 
         # Generate linearization plots
-        fig = plt.figure(figsize=(18, 6))
+        plt.figure(figsize=(18, 6))
 
         plt.subplot(1, 3, 1)
         for band, band_name in enumerate(band_names):
-            color = band_name[0].lower() if band_name != "UV" else "purple"
+            is_uv = (band_name == "UV")
+            color = "purple" if is_uv else band_name[0].lower()
             plt.scatter(
                 measured_samples[:, band],
                 expected_values_truncated[:, band],
@@ -936,7 +1079,8 @@ def generate_pipeline_analysis(
 
         plt.subplot(1, 3, 2)
         for band, band_name in enumerate(band_names):
-            color = band_name[0].lower() if band_name != "UV" else "purple"
+            is_uv = (band_name == "UV")
+            color = "purple" if is_uv else band_name[0].lower()
             plt.scatter(
                 measured_samples[:, band],
                 linearized_values[:, band],
@@ -953,7 +1097,8 @@ def generate_pipeline_analysis(
 
         plt.subplot(1, 3, 3)
         for band, band_name in enumerate(band_names):
-            color = band_name[0].lower() if band_name != "UV" else "purple"
+            is_uv = (band_name == "UV")
+            color = "purple" if is_uv else band_name[0].lower()
             plt.scatter(
                 expected_values_truncated[:, band],
                 linearized_values[:, band],
@@ -963,20 +1108,25 @@ def generate_pipeline_analysis(
                 alpha=0.6,
             )
         all_vals = np.concatenate(
-            [expected_values_truncated.flatten(), linearized_values.flatten()]
+            [expected_values_truncated.flatten(),
+             linearized_values.flatten()]
         )
         min_val, max_val = all_vals.min(), all_vals.max()
-        plt.plot([min_val, max_val], [min_val, max_val], "k--", alpha=0.3, linewidth=2)
+        plt.plot(
+            [min_val, max_val], [min_val, max_val],
+            "k--", alpha=0.3, linewidth=2
+        )
         plt.xlabel("Actual Value", fontsize=12)
         plt.ylabel("Linearized Value", fontsize=12)
-        plt.title("Linearization Accuracy", fontsize=14, fontweight="bold")
+        plt.title(
+            "Linearization Accuracy", fontsize=14, fontweight="bold"
+        )
         plt.legend()
         plt.grid(True, alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(
-            analysis_dir / "linearization_quality.png", dpi=150, bbox_inches="tight"
-        )
+        lin_plot_path = analysis_dir / "linearization_quality.png"
+        plt.savefig(lin_plot_path, dpi=150, bbox_inches="tight")
         plt.close()
 
         # Save metrics
@@ -991,24 +1141,32 @@ def generate_pipeline_analysis(
     # 3. Camera vs Animal sensitivity comparison
     print("    - Sensitivity comparison... ", end="", flush=True)
     try:
-        camera_sense = load_csv(camera_path, normalize=True, skip_wavelength=True)
+        camera_sense = load_csv(
+            camera_path, normalize=True, skip_wavelength=True
+        )
 
         # Get animal sensitivities
-        animal_sense_path = (
-            Path("data/animal_sensitivities") / f"{animal_type}_sensitivities.csv"
-        )
+        animal_dir = Path("data/animal_sensitivities")
+        animal_sense_path = animal_dir / f"{animal_type}_sensitivities.csv"
         if animal_sense_path.exists():
-            animal_sense = load_csv(str(animal_sense_path), normalize=True, skip_wavelength=True)
+            animal_sense = load_csv(
+                str(animal_sense_path), normalize=True,
+                skip_wavelength=True
+            )
 
-            fig = plt.figure(figsize=(15, 6))
+            plt.figure(figsize=(15, 6))
 
             # Camera sensitivities
             plt.subplot(1, 2, 1)
             band_names = ["UV", "Blue", "Green", "Red"]
             n_camera_bands = camera_sense.shape[1]
             for band in range(n_camera_bands):
-                band_name = band_names[band] if band < len(band_names) else f"Band {band+1}"
-                color = band_name[0].lower() if band_name != "UV" else "purple"
+                if band < len(band_names):
+                    band_name = band_names[band]
+                else:
+                    band_name = f"Band {band+1}"
+                is_uv = (band_name == "UV")
+                color = "purple" if is_uv else band_name[0].lower()
                 plt.plot(
                     np.arange(300, 701),
                     camera_sense[:, band],
@@ -1018,7 +1176,10 @@ def generate_pipeline_analysis(
                 )
             plt.xlabel("Wavelength (nm)", fontsize=12)
             plt.ylabel("Sensitivity", fontsize=12)
-            plt.title("Camera Spectral Sensitivity", fontsize=14, fontweight="bold")
+            plt.title(
+                "Camera Spectral Sensitivity",
+                fontsize=14, fontweight="bold"
+            )
             plt.legend()
             plt.grid(True, alpha=0.3)
 
@@ -1033,10 +1194,10 @@ def generate_pipeline_analysis(
                 )
             plt.xlabel("Wavelength (nm)", fontsize=12)
             plt.ylabel("Sensitivity", fontsize=12)
+            animal_title = animal_type.replace("_", " ").title()
             plt.title(
-                f'{animal_type.replace("_", " ").title()} Spectral Sensitivity',
-                fontsize=14,
-                fontweight="bold",
+                f'{animal_title} Spectral Sensitivity',
+                fontsize=14, fontweight="bold"
             )
             plt.legend()
             plt.grid(True, alpha=0.3)
@@ -1051,7 +1212,7 @@ def generate_pipeline_analysis(
 
             print("✓")
         else:
-            print(f"⚠ (no animal sensitivity file)")
+            print("⚠ (no animal sensitivity file)")
 
     except Exception as e:
         print(f"✗ ({e})")
@@ -1059,22 +1220,32 @@ def generate_pipeline_analysis(
     # 4. Animal vision conversion accuracy
     print("    - Conversion accuracy... ", end="", flush=True)
     try:
-        # Note: reusing sample_ref, measured_samples, and linearizer from earlier
+        # Note: reusing sample_ref, measured_samples,
+        # and linearizer from earlier
 
         # Get animal sensitivities
-        animal_sense_path = (
-            Path("data/animal_sensitivities") / f"{animal_type}_sensitivities.csv"
-        )
+        animal_dir = Path("data/animal_sensitivities")
+        animal_sense_path = animal_dir / f"{animal_type}_sensitivities.csv"
         if animal_sense_path.exists():
-            animal_sense = load_csv(str(animal_sense_path), normalize=True, skip_wavelength=True)
+            animal_sense = load_csv(
+                str(animal_sense_path), normalize=True,
+                skip_wavelength=True
+            )
             expected_animal_values = sample_ref.T.dot(animal_sense)
 
-            # Get predicted values by running patches through full pipeline
-            linearized_values = linearizer.apply_values(measured_samples)
-            predicted_animal_values = linearized_values.dot(sense_converter.mat)
+            # Get predicted values by running patches through
+            # full pipeline
+            linearized_values = linearizer.apply_values(
+                measured_samples
+            )
+            predicted_animal_values = linearized_values.dot(
+                sense_converter.mat
+            )
 
             # Truncate to same length
-            min_len = min(len(expected_animal_values), len(predicted_animal_values))
+            min_len = min(
+                len(expected_animal_values), len(predicted_animal_values)
+            )
             expected_animal_values = expected_animal_values[:min_len]
             predicted_animal_values = predicted_animal_values[:min_len]
 
@@ -1082,11 +1253,14 @@ def generate_pipeline_analysis(
             n_bands = animal_sense.shape[1]
             conversion_metrics = {}
             for band in range(n_bands):
-                residuals = predicted_animal_values[:, band] - expected_animal_values[:, band]
+                pred_band = predicted_animal_values[:, band]
+                exp_band = expected_animal_values[:, band]
+                residuals = pred_band - exp_band
                 mae = np.mean(np.abs(residuals))
                 ss_res = np.sum(residuals**2)
+                mean_exp = expected_animal_values[:, band].mean()
                 ss_tot = np.sum(
-                    (expected_animal_values[:, band] - expected_animal_values[:, band].mean())**2
+                    (expected_animal_values[:, band] - mean_exp)**2
                 )
                 r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0
                 conversion_metrics[f"Photoreceptor_{band+1}"] = {
@@ -1111,17 +1285,24 @@ def generate_pipeline_analysis(
                 plt.colorbar(scatter, label='Patch Index')
                 plt.xlabel("Actual Animal Response", fontsize=12)
                 plt.ylabel("Predicted Animal Response", fontsize=12)
+                metric_key = f'Photoreceptor_{band+1}'
+                mae_val = conversion_metrics[metric_key]['MAE']
+                r2_val = conversion_metrics[metric_key]['R2']
                 plt.title(
-                    f"Photoreceptor {band+1}\nMAE={conversion_metrics[f'Photoreceptor_{band+1}']['MAE']:.2f}, "
-                    f"R²={conversion_metrics[f'Photoreceptor_{band+1}']['R2']:.3f}",
-                    fontsize=12,
-                    fontweight="bold"
+                    f"Photoreceptor {band+1}\n"
+                    f"MAE={mae_val:.2f}, R²={r2_val:.3f}",
+                    fontsize=12, fontweight="bold"
                 )
 
                 # Add diagonal line
-                all_vals = np.concatenate([expected_animal_values[:, band], predicted_animal_values[:, band]])
+                exp_vals = expected_animal_values[:, band]
+                pred_vals = predicted_animal_values[:, band]
+                all_vals = np.concatenate([exp_vals, pred_vals])
                 min_val, max_val = all_vals.min(), all_vals.max()
-                plt.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.3, linewidth=2)
+                plt.plot(
+                    [min_val, max_val], [min_val, max_val],
+                    'k--', alpha=0.3, linewidth=2
+                )
                 plt.grid(True, alpha=0.3)
 
             plt.tight_layout()
@@ -1138,7 +1319,7 @@ def generate_pipeline_analysis(
 
             print("✓")
         else:
-            print(f"⚠ (no animal sensitivity file)")
+            print("⚠ (no animal sensitivity file)")
 
     except Exception as e:
         print(f"✗ ({e})")
@@ -1147,12 +1328,13 @@ def generate_pipeline_analysis(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Apply full pipeline: alignment + linearization + animal vision conversion"
-    )
+    desc = ("Apply full pipeline: alignment + linearization + "
+            "animal vision conversion")
+    parser = argparse.ArgumentParser(description=desc)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--all", action="store_true", help="Process all samples with required data"
+        "--all", action="store_true",
+        help="Process all samples with required data"
     )
     group.add_argument(
         "--approved-only",
@@ -1162,19 +1344,19 @@ def main():
     group.add_argument("--samples", nargs="+", help="Process specific samples")
 
     parser.add_argument(
-        "--animal",
-        type=str,
-        help="Animal type (e.g., apis, avian, bombus). Overrides pipeline_config.json",
+        "--animal", type=str,
+        help="Animal type (e.g., apis, avian, bombus). "
+        "Overrides pipeline_config.json"
     )
     parser.add_argument(
-        "--pipeline-config",
-        type=str,
-        help="Path to pipeline config JSON (default: videos/samples/pipeline_config.json)",
+        "--pipeline-config", type=str,
+        help="Path to pipeline config JSON "
+        "(default: videos/samples/pipeline_config.json)"
     )
     parser.add_argument(
-        "--output-dir",
-        default="videos/output",
-        help="Output directory for final videos (default: videos/output)",
+        "--output-dir", default="videos/output",
+        help="Output directory for final videos "
+        "(default: videos/output)"
     )
     parser.add_argument(
         "--batch-size",
@@ -1183,7 +1365,8 @@ def main():
         help="Frames to process per batch (default: 32)",
     )
     parser.add_argument(
-        "--force", action="store_true", help="Reprocess even if output already exists"
+        "--force", action="store_true",
+        help="Reprocess even if output already exists"
     )
 
     parser.add_argument(
@@ -1206,10 +1389,10 @@ def main():
         'Outputs will have "_preview" suffix.',
     )
     parser.add_argument(
-        "--aligned-only",
-        action="store_true",
-        help="Output aligned videos only (no linearization or animal vision conversion). "
-        "Produces VIS_aligned.mp4 and UV_aligned.mp4 for each sample.",
+        "--aligned-only", action="store_true",
+        help="Output aligned videos only (no linearization or "
+        "animal vision conversion). Produces VIS_aligned.mp4 and "
+        "UV_aligned.mp4 for each sample."
     )
 
     args = parser.parse_args()
@@ -1229,9 +1412,9 @@ def main():
         # Validate animal type
         animal_type = pipeline_config.get("animal_type")
         if not animal_type:
-            print(
-                "Error: animal_type not specified in pipeline_config.json or --animal flag"
-            )
+            msg = ("Error: animal_type not specified in "
+                   "pipeline_config.json or --animal flag")
+            print(msg)
             sys.exit(1)
 
         # Load sense converter
@@ -1265,22 +1448,26 @@ def main():
     if args.aligned_only:
         print("Step 3: Apply Alignment Only (No Color Science)")
     else:
-        print("Step 3: Apply Full Pipeline (Alignment + Linearization + Animal Vision)")
+        msg = ("Step 3: Apply Full Pipeline "
+               "(Alignment + Linearization + Animal Vision)")
+        print(msg)
     print("=" * 70)
     print(f"Samples: {len(samples)}")
     if args.aligned_only:
-        print("Mode: Alignment only (no linearization or animal vision)")
+        mode_msg = "Alignment only (no linearization or animal vision)"
+        print(f"Mode: {mode_msg}")
     else:
         print(f"Animal type: {animal_type}")
-        print(
-            f"Camera: {'Sony SLog3' if pipeline_config.get('is_sony_camera') else 'Generic'}"
-        )
+        is_sony = pipeline_config.get('is_sony_camera')
+        camera_type = 'Sony SLog3' if is_sony else 'Generic'
+        print(f"Camera: {camera_type}")
     print(f"Output directory: {args.output_dir}")
     print(f"Batch size: {args.batch_size}")
     if args.approved_only:
         print("Filter: Approved alignments only")
     if args.preview is not None:
-        print(f"🎬 PREVIEW MODE: Processing first {args.preview} frames only")
+        msg = f"Processing first {args.preview} frames only"
+        print(f"🎬 PREVIEW MODE: {msg}")
     print()
 
     output_dir = Path(args.output_dir)
@@ -1295,17 +1482,17 @@ def main():
         # Load config
         config = load_sample_config(sample_id, args.samples_dir)
         if config is None:
-            print(f"  ⚠ No config.json found, skipping")
+            print("  ⚠ No config.json found, skipping")
             results.append((sample_id, "SKIPPED", "No config"))
             continue
 
         # Check for alignment
         alignment_main = config.get("alignment_main")
         if not alignment_main:
-            print(f"  ⚠ No alignment data")
-            print(
-                f"    Run: python scripts/step1b_run_alignments.py --samples {sample_id}"
-            )
+            print("  ⚠ No alignment data")
+            cmd = (f"    Run: python scripts/step1b_run_alignments.py "
+                   f"--samples {sample_id}")
+            print(cmd)
             results.append((sample_id, "SKIPPED", "No alignment"))
             continue
 
@@ -1313,20 +1500,21 @@ def main():
         if args.approved_only:
             review_status = alignment_main.get("review_status")
             if review_status != "approved":
-                print(
-                    f"  ⊘ Alignment not approved (status: {review_status or 'unreviewed'})"
-                )
+                status = review_status or 'unreviewed'
+                print(f"  ⊘ Alignment not approved (status: {status})")
                 results.append((sample_id, "SKIPPED", "Not approved"))
                 continue
 
-        # Check for calibration patches (only required if not aligned-only mode)
+        # Check for calibration patches
+        # (only required if not aligned-only mode)
         if not args.aligned_only:
             calibration_patches = config.get("calibration_patches")
             if not calibration_patches:
                 print("  ⚠ No calibration patch data")
-                print(
-                    f"    Run: python scripts/step2_extract_calibration.py --samples {sample_id}"
-                )
+                cmd = ("    Run: python "
+                       "scripts/step2_extract_calibration.py "
+                       f"--samples {sample_id}")
+                print(cmd)
                 results.append((sample_id, "SKIPPED", "No calibration"))
                 continue
         else:
@@ -1337,7 +1525,7 @@ def main():
         vis_path, uv_path = find_video_pair(sample_dir)
 
         if vis_path is None:
-            print(f"  ✗ Videos not found")
+            print("  ✗ Videos not found")
             results.append((sample_id, "FAILED", "Videos not found"))
             continue
 
@@ -1348,14 +1536,19 @@ def main():
         if not args.aligned_only:
             print("  Building linearizer... ", end="", flush=True)
             try:
-                linearizer = build_linearizer(calibration_patches, pipeline_config)
+                linearizer = build_linearizer(
+                    calibration_patches, pipeline_config
+                )
                 if linearizer is None:
-                    results.append((sample_id, "FAILED", "Linearizer build failed"))
+                    result = (sample_id, "FAILED",
+                              "Linearizer build failed")
+                    results.append(result)
                     continue
                 print("✓")
             except Exception as e:
                 print(f"✗ Error: {e}")
-                results.append((sample_id, "FAILED", f"Linearizer: {str(e)[:50]}"))
+                error_msg = f"Linearizer: {str(e)[:50]}"
+                results.append((sample_id, "FAILED", error_msg))
                 continue
         else:
             linearizer = None
@@ -1369,8 +1562,10 @@ def main():
 
         if args.aligned_only:
             # Aligned-only mode: output VIS_aligned and UV_aligned
-            aligned_vis_output_path = sample_output_dir / f"{sample_id}_VIS_aligned{preview_suffix}.mp4"
-            aligned_uv_output_path = sample_output_dir / f"{sample_id}_UV_aligned{preview_suffix}.mp4"
+            vis_name = f"{sample_id}_VIS_aligned{preview_suffix}.mp4"
+            aligned_vis_output_path = sample_output_dir / vis_name
+            uv_name = f"{sample_id}_UV_aligned{preview_suffix}.mp4"
+            aligned_uv_output_path = sample_output_dir / uv_name
 
             # Check if already exists
             if (
@@ -1402,8 +1597,10 @@ def main():
                 elapsed = time.time() - start
                 print(f"✓ Done in {elapsed:.1f}s")
                 print("  Output:")
-                print(f"    VIS aligned: {aligned_vis_output_path.name}")
-                print(f"    UV aligned:  {aligned_uv_output_path.name}")
+                vis_name = aligned_vis_output_path.name
+                uv_name = aligned_uv_output_path.name
+                print(f"    VIS aligned: {vis_name}")
+                print(f"    UV aligned:  {uv_name}")
                 results.append((sample_id, "SUCCESS", "Aligned"))
             except Exception as e:
                 print(f"✗ Error: {e}")
@@ -1413,10 +1610,12 @@ def main():
                 continue
         else:
             # Full pipeline mode: animal vision and human vision
-            animal_output_path = (
-                sample_output_dir / f"{sample_id}_animal_{animal_type}{preview_suffix}.mp4"
+            animal_name = (
+                f"{sample_id}_animal_{animal_type}{preview_suffix}.mp4"
             )
-            human_output_path = sample_output_dir / f"{sample_id}_human{preview_suffix}.mp4"
+            animal_output_path = sample_output_dir / animal_name
+            human_name = f"{sample_id}_human{preview_suffix}.mp4"
+            human_output_path = sample_output_dir / human_name
 
             # Check if already exists
             if (
@@ -1473,7 +1672,8 @@ def main():
                         )
                         print("✓")
                     except Exception as e:
-                        print(f"⚠ Warning: Analysis generation failed: {e}")
+                        msg = f"Analysis generation failed: {e}"
+                        print(f"⚠ Warning: {msg}")
             except Exception as e:
                 print(f"✗ Error: {e}")
                 import traceback
@@ -1487,12 +1687,23 @@ def main():
     print("SUMMARY")
     print("=" * 70)
 
-    success_count = sum(1 for _, status, _ in results if status == "SUCCESS")
-    failed_count = sum(1 for _, status, _ in results if status == "FAILED")
-    skipped_count = sum(1 for _, status, _ in results if status == "SKIPPED")
+    success_count = sum(
+        1 for _, status, _ in results if status == "SUCCESS"
+    )
+    failed_count = sum(
+        1 for _, status, _ in results if status == "FAILED"
+    )
+    skipped_count = sum(
+        1 for _, status, _ in results if status == "SKIPPED"
+    )
 
     for sample_id, status, detail in results:
-        symbol = "✓" if status == "SUCCESS" else "✗" if status == "FAILED" else "⊘"
+        if status == "SUCCESS":
+            symbol = "✓"
+        elif status == "FAILED":
+            symbol = "✗"
+        else:
+            symbol = "⊘"
         print(f"{symbol} {sample_id}: {status} - {detail}")
 
     print(f"\nSuccess: {success_count}/{len(results)}")
@@ -1502,10 +1713,13 @@ def main():
     if success_count > 0:
         if args.aligned_only:
             print(f"\n✓ Aligned videos saved to: {args.output_dir}")
-            print("\nAll done! Your aligned VIS and UV videos are ready.")
+            msg = "All done! Your aligned VIS and UV videos are ready."
+            print(f"\n{msg}")
         else:
             print(f"\n✓ Animal vision videos saved to: {args.output_dir}")
-            print(f"\nAll done! Your {animal_type} vision videos are ready for analysis.")
+            msg = (f"All done! Your {animal_type} vision videos "
+                   f"are ready for analysis.")
+            print(f"\n{msg}")
 
 
 if __name__ == "__main__":

@@ -72,7 +72,7 @@ def create_2x2_grid(vis_img, uv_img, sample_id):
         label_h = 40
         label_img = np.zeros((label_h, disp.shape[1], 3), dtype=np.uint8)
         cv2.putText(label_img, label, (10, 28),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         disp = np.vstack([label_img, disp])
 
         displays.append(disp)
@@ -83,18 +83,23 @@ def create_2x2_grid(vis_img, uv_img, sample_id):
 
     # Make rows same width
     if top_row.shape[1] < bottom_row.shape[1]:
-        pad = np.zeros((top_row.shape[0], bottom_row.shape[1] - top_row.shape[1], 3), dtype=np.uint8)
+        pad_width = bottom_row.shape[1] - top_row.shape[1]
+        pad = np.zeros((top_row.shape[0], pad_width, 3), dtype=np.uint8)
         top_row = np.hstack([top_row, pad])
     elif bottom_row.shape[1] < top_row.shape[1]:
-        pad = np.zeros((bottom_row.shape[0], top_row.shape[1] - bottom_row.shape[1], 3), dtype=np.uint8)
+        pad_width = top_row.shape[1] - bottom_row.shape[1]
+        pad = np.zeros((bottom_row.shape[0], pad_width, 3), dtype=np.uint8)
         bottom_row = np.hstack([bottom_row, pad])
 
     combined = np.vstack([top_row, bottom_row])
 
     # Add instructions at bottom
     instruction_h = 60
-    instructions = np.zeros((instruction_h, combined.shape[1], 3), dtype=np.uint8)
-    cv2.putText(instructions, f"Sample {sample_id}: Click the UV that matches VISIBLE orientation",
+    instructions = np.zeros(
+        (instruction_h, combined.shape[1], 3), dtype=np.uint8
+    )
+    text = f"Sample {sample_id}: Click the UV that matches VISIBLE orientation"
+    cv2.putText(instructions, text,
                 (20, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
     cv2.putText(instructions, "[q] Quit | [s] Skip",
                 (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
@@ -127,8 +132,10 @@ def select_flip_for_sample(sample_id, sample_dir, video_type="main"):
         search_dir = sample_dir
         label_prefix = sample_id
 
-    vis_videos = sorted(search_dir.glob('VIS_*.MP4')) + sorted(search_dir.glob('VIS_*.mp4'))
-    uv_videos = sorted(search_dir.glob('UV_*.MP4')) + sorted(search_dir.glob('UV_*.mp4'))
+    vis_videos = (sorted(search_dir.glob('VIS_*.MP4')) +
+                  sorted(search_dir.glob('VIS_*.mp4')))
+    uv_videos = (sorted(search_dir.glob('UV_*.MP4')) +
+                 sorted(search_dir.glob('UV_*.mp4')))
 
     if not vis_videos or not uv_videos:
         print(f"⚠ {label_prefix}: No video pair found")
@@ -190,24 +197,31 @@ def select_flip_for_sample(sample_id, sample_dir, video_type="main"):
         # Handle keyboard
         if key == ord('s'):  # Skip
             cv2.destroyWindow(window_name)
-            print(f"  ⊘ Skipped")
+            print("  ⊘ Skipped")
             return None
         elif key == ord('q') or key == 27:  # Quit
             cv2.destroyAllWindows()
-            print(f"\n✗ Quit by user")
+            print("\n✗ Quit by user")
             return "QUIT"
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Select flip directions interactively - saves config.json in each sample folder"
+        description=("Select flip directions interactively - "
+                     "saves config.json in each sample folder")
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--all', action='store_true', help='Process all samples')
-    group.add_argument('--samples', nargs='+', help='Specific samples (e.g., 001 006 012)')
+    group.add_argument(
+        '--all', action='store_true', help='Process all samples'
+    )
+    group.add_argument(
+        '--samples', nargs='+', help='Specific samples (e.g., 001 006 012)'
+    )
 
-    parser.add_argument('--samples-dir', default='videos/samples',
-                       help='Directory containing samples (default: videos/samples)')
+    parser.add_argument(
+        '--samples-dir', default='videos/samples',
+        help='Directory containing samples (default: videos/samples)'
+    )
 
     args = parser.parse_args()
 
@@ -248,28 +262,35 @@ def main():
         sample_dir = Path(args.samples_dir) / sample_id
 
         if not sample_dir.exists():
-            print(f"⚠ Directory not found, skipping")
+            print("⚠ Directory not found, skipping")
             continue
 
         # Check if has calibration
-        has_calibration = (sample_dir / 'calibration').exists()
+        has_calibration = (
+            (sample_dir / 'calibration').exists()
+        )
 
         # Main videos
         print("\nMAIN VIDEOS")
         print("-" * 70)
-        main_flip = select_flip_for_sample(sample_id, sample_dir, video_type="main")
+        main_flip = select_flip_for_sample(
+            sample_id, sample_dir, video_type="main"
+        )
 
         if main_flip == "QUIT":
             break
         elif main_flip is None:
-            continue  # Skipped main, skip calibration too
+            # Skipped main, skip calibration too
+            continue
 
         # Calibration videos (if they exist)
         cal_flip = None
         if has_calibration:
             print("\nCALIBRATION VIDEOS")
             print("-" * 70)
-            cal_flip = select_flip_for_sample(sample_id, sample_dir, video_type="calibration")
+            cal_flip = select_flip_for_sample(
+                sample_id, sample_dir, video_type="calibration"
+            )
 
             if cal_flip == "QUIT":
                 break
@@ -284,7 +305,9 @@ def main():
             else:
                 config = {
                     'sample_id': sample_id,
-                    'created': str(Path(sample_dir).stat().st_mtime),
+                    'created': str(
+                        Path(sample_dir).stat().st_mtime
+                    ),
                 }
 
             # Update with flip info for main videos
@@ -292,8 +315,10 @@ def main():
             config['has_calibration'] = has_calibration
 
             # Find main video files
-            vis_videos = sorted(sample_dir.glob('VIS_*.MP4')) + sorted(sample_dir.glob('VIS_*.mp4'))
-            uv_videos = sorted(sample_dir.glob('UV_*.MP4')) + sorted(sample_dir.glob('UV_*.mp4'))
+            vis_videos = (sorted(sample_dir.glob('VIS_*.MP4')) +
+                          sorted(sample_dir.glob('VIS_*.mp4')))
+            uv_videos = (sorted(sample_dir.glob('UV_*.MP4')) +
+                         sorted(sample_dir.glob('UV_*.mp4')))
 
             config['main_videos'] = {
                 'vis': vis_videos[0].name if vis_videos else None,
@@ -305,8 +330,10 @@ def main():
                 config['flip_calibration'] = cal_flip
 
                 cal_dir = sample_dir / 'calibration'
-                cal_vis = sorted(cal_dir.glob('VIS_*.MP4')) + sorted(cal_dir.glob('VIS_*.mp4'))
-                cal_uv = sorted(cal_dir.glob('UV_*.MP4')) + sorted(cal_dir.glob('UV_*.mp4'))
+                cal_vis = (sorted(cal_dir.glob('VIS_*.MP4')) +
+                           sorted(cal_dir.glob('VIS_*.mp4')))
+                cal_uv = (sorted(cal_dir.glob('UV_*.MP4')) +
+                          sorted(cal_dir.glob('UV_*.mp4')))
 
                 config['calibration_videos'] = {
                     'vis': cal_vis[0].name if cal_vis else None,
@@ -322,10 +349,10 @@ def main():
             results[sample_id] = config
 
     # Summary
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     if results:
         print("SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print(f"Processed: {len(results)}/{len(samples)} samples")
         print()
 
@@ -333,22 +360,35 @@ def main():
         for sample_id, config in results.items():
             main_flip = config.get('flip_main', 'unknown')
             cal_flip = config.get('flip_calibration', 'N/A')
-            flip_counts[main_flip] = flip_counts.get(main_flip, 0) + 1
-            print(f"  {sample_id}: main={main_flip}, cal={cal_flip}")
+            flip_counts[main_flip] = (
+                flip_counts.get(main_flip, 0) + 1
+            )
+            print(
+                f"  {sample_id}: main={main_flip}, cal={cal_flip}"
+            )
 
-        print(f"\nFlip distribution:")
+        print("\nFlip distribution:")
         for flip, count in sorted(flip_counts.items()):
             print(f"  {flip}: {count} samples")
 
-        print(f"\n✓ Configs saved to: {args.samples_dir}/{{sample_id}}/config.json")
-        print(f"\nNext steps:")
-        print(f"  # Preview alignment:")
-        print(f"  python scripts/step1c_preview_alignment.py --samples {' '.join(list(results.keys())[:3])}")
-        print(f"\n  # Run full batch alignment:")
-        print(f"  python scripts/step1b_run_alignments.py --all --method aruco")
+        print(
+            f"\n✓ Configs saved to: {args.samples_dir}/{{sample_id}}"
+            "/config.json"
+        )
+        print("\nNext steps:")
+        print("  # Preview alignment:")
+        samples_list = ' '.join(list(results.keys())[:3])
+        print(
+            f"  python scripts/step1c_preview_alignment.py "
+            f"--samples {samples_list}"
+        )
+        print("\n  # Run full batch alignment:")
+        print(
+            "  python scripts/step1b_run_alignments.py --all --method aruco"
+        )
     else:
         print("SUMMARY")
-        print("="*70)
+        print("=" * 70)
         print("No samples processed")
 
 

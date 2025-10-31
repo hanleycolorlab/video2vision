@@ -7,13 +7,20 @@ into the pipeline JSON format expected by Video-Analysis.ipynb (old format).
 
 Usage:
     # Convert main video alignment
-    python scripts/convert_alignment_to_pipeline.py --config /path/to/sample/config.json --output data/video_alignment_pipeline.json
+    python scripts/convert_alignment_to_pipeline.py \
+        --config /path/to/sample/config.json \
+        --output data/video_alignment_pipeline.json
 
     # Convert calibration video alignment
-    python scripts/convert_alignment_to_pipeline.py --config /path/to/sample/config.json --calibration --output data/still_alignment_pipeline.json
+    python scripts/convert_alignment_to_pipeline.py \
+        --config /path/to/sample/config.json \
+        --calibration \
+        --output data/still_alignment_pipeline.json
 
     # Auto-detect from sample ID
-    python scripts/convert_alignment_to_pipeline.py --sample 002 --samples-dir "~/Desktop/UV Selects/Processing/All"
+    python scripts/convert_alignment_to_pipeline.py \
+        --sample 002 \
+        --samples-dir "~/Desktop/UV Selects/Processing/All"
 """
 
 import argparse
@@ -22,12 +29,15 @@ import sys
 from pathlib import Path
 
 
-def create_pipeline_from_alignment(alignment_data, flip_type, video_type="main"):
+def create_pipeline_from_alignment(
+    alignment_data, flip_type, video_type="main"
+):
     """
     Create pipeline JSON structure from alignment data.
 
     Args:
-        alignment_data: Dict with 'homography_matrix', 'output_size', 'temporal_shift', etc.
+        alignment_data: Dict with 'homography_matrix', 'output_size',
+            'temporal_shift', etc.
         flip_type: One of 'none', 'horizontal', 'vertical'
         video_type: 'main' or 'calibration'
 
@@ -39,7 +49,9 @@ def create_pipeline_from_alignment(alignment_data, flip_type, video_type="main")
     temporal_shift = alignment_data.get("temporal_shift", 0)
 
     if not homography_matrix or not output_size:
-        raise ValueError("Missing required alignment data: homography_matrix or output_size")
+        raise ValueError(
+            "Missing required alignment data: homography_matrix or output_size"
+        )
 
     # Build pipeline nodes
     pipeline = []
@@ -129,7 +141,8 @@ def create_pipeline_from_alignment(alignment_data, flip_type, video_type="main")
     # Node: AutoAlign or AutoTemporalAlign
     align_index = current_index
 
-    if video_type == "main" and temporal_shift is not None and temporal_shift != 0:
+    if (video_type == "main" and temporal_shift is not None and
+            temporal_shift != 0):
         # Use AutoTemporalAlign for main videos with temporal shift
         # Note: The old format expects time_shift_range, not the actual shift
         # We set a range around the detected shift
@@ -153,7 +166,8 @@ def create_pipeline_from_alignment(alignment_data, flip_type, video_type="main")
             "operator": {
                 "class": "AutoAlign",
                 "num_votes": 4,
-                "mask": [27, 16, 5730, 3094],  # Default mask from still_alignment_pipeline
+                # Default mask from still_alignment_pipeline
+                "mask": [27, 16, 5730, 3094],
                 "bands": [[0, 1, 2], []],
                 "method": "ecc"
             },
@@ -193,12 +207,20 @@ def main():
     # Input options
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--config', help='Path to config.json file')
-    group.add_argument('--sample', help='Sample ID (will look for config.json in samples-dir)')
+    group.add_argument(
+        '--sample',
+        help='Sample ID (will look for config.json in samples-dir)'
+    )
 
     # Options
-    parser.add_argument('--samples-dir', help='Directory containing samples (when using --sample)')
-    parser.add_argument('--calibration', action='store_true',
-                       help='Convert calibration alignment instead of main')
+    parser.add_argument(
+        '--samples-dir',
+        help='Directory containing samples (when using --sample)'
+    )
+    parser.add_argument(
+        '--calibration', action='store_true',
+        help='Convert calibration alignment instead of main'
+    )
     parser.add_argument('--output', help='Output pipeline JSON file path')
 
     args = parser.parse_args()
@@ -245,19 +267,21 @@ def main():
     # Check if approved
     review_status = alignment_data.get("review_status")
     if review_status == "rejected":
-        print(f"Warning: Alignment was rejected in review")
+        print("Warning: Alignment was rejected in review")
         response = input("Continue anyway? [y/N] ")
         if response.lower() != 'y':
             print("Aborted")
             sys.exit(1)
     elif review_status == "approved":
-        print(f"✓ Alignment approved in review")
+        print("✓ Alignment approved in review")
     else:
-        print(f"⚠ Alignment has not been reviewed yet")
+        print("⚠ Alignment has not been reviewed yet")
 
     # Create pipeline
     try:
-        pipeline = create_pipeline_from_alignment(alignment_data, flip_type, video_type)
+        pipeline = create_pipeline_from_alignment(
+            alignment_data, flip_type, video_type
+        )
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
@@ -271,14 +295,14 @@ def main():
         json.dump(pipeline, f, indent="\t")
 
     print(f"\n✓ Pipeline created: {output_path}")
-    print(f"\nDetails:")
+    print("\nDetails:")
     print(f"  Sample: {config.get('sample_id', 'unknown')}")
     print(f"  Type: {video_type}")
     print(f"  Flip: {flip_type}")
     print(f"  Output size: {alignment_data.get('output_size')}")
     print(f"  Temporal shift: {alignment_data.get('temporal_shift', 0)}")
     print(f"  Method: {alignment_data.get('method')}")
-    print(f"\nYou can now use this pipeline in Video-Analysis.ipynb")
+    print("\nYou can now use this pipeline in Video-Analysis.ipynb")
 
 
 if __name__ == "__main__":

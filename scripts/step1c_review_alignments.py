@@ -31,7 +31,6 @@ import sys
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 
 def load_sample_config(sample_id, samples_dir='videos/samples'):
@@ -71,7 +70,7 @@ def review_composite(sample_id, video_type, composite_path):
     composite = cv2.imread(str(composite_path))
 
     if composite is None:
-        print(f"    ✗ Could not load composite image")
+        print("    ✗ Could not load composite image")
         return None
 
     # Create instruction overlay
@@ -86,8 +85,11 @@ def review_composite(sample_id, video_type, composite_path):
     text1 = f"Sample {sample_id} - {video_type.upper()}"
     text2 = "[Y/SPACE]=Approve  [N/R]=Reject  [S]=Skip  [Q/ESC]=Quit"
 
-    cv2.putText(overlay, text1, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-    cv2.putText(overlay, text2, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(overlay, text1, (10, 25), font, 0.8,
+                (255, 255, 255), 2)
+    cv2.putText(overlay, text2, (10, 50), font, 0.6,
+                (0, 255, 255), 1)
 
     # Show window
     window_name = f"Review: {sample_id} - {video_type}"
@@ -98,10 +100,12 @@ def review_composite(sample_id, video_type, composite_path):
     while True:
         key = cv2.waitKey(0) & 0xFF
 
-        if key == ord('y') or key == ord('Y') or key == ord(' '):  # Approve
+        # Approve
+        if key in [ord('y'), ord('Y'), ord(' ')]:
             cv2.destroyWindow(window_name)
             return 'approved'
-        elif key == ord('n') or key == ord('N') or key == ord('r') or key == ord('R'):  # Reject
+        # Reject
+        elif key in [ord('n'), ord('N'), ord('r'), ord('R')]:
             cv2.destroyWindow(window_name)
             return 'rejected'
         elif key == ord('s') or key == ord('S'):  # Skip
@@ -117,15 +121,32 @@ def main():
         description="Review alignment composite images and approve/reject"
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('--all', action='store_true', help='Review all samples with composites')
-    group.add_argument('--samples', nargs='+', help='Specific samples to review')
+    group.add_argument(
+        '--all',
+        action='store_true',
+        help='Review all samples with composites'
+    )
+    group.add_argument(
+        '--samples',
+        nargs='+',
+        help='Specific samples to review'
+    )
 
-    parser.add_argument('--skip-calibration', action='store_true',
-                       help='Only review main videos')
-    parser.add_argument('--main-only', action='store_true',
-                       help='Only review main videos (same as --skip-calibration)')
-    parser.add_argument('--samples-dir', default='videos/samples',
-                       help='Directory containing samples (default: videos/samples)')
+    parser.add_argument(
+        '--skip-calibration',
+        action='store_true',
+        help='Only review main videos'
+    )
+    parser.add_argument(
+        '--main-only',
+        action='store_true',
+        help='Only review main videos (same as --skip-calibration)'
+    )
+    parser.add_argument(
+        '--samples-dir',
+        default='videos/samples',
+        help='Directory containing samples (default: videos/samples)'
+    )
 
     args = parser.parse_args()
 
@@ -153,13 +174,15 @@ def main():
     print("="*70)
     print(f"Samples: {len(samples)}")
     print()
-    print("Check the composite images to verify alignment quality:")
+    msg = "Check the composite images to verify alignment quality:"
+    print(msg)
     print("  - UV and VIS should overlap perfectly")
     print("  - No ghosting or color fringing")
     print("  - Features should line up (edges, landmarks, etc.)")
     print()
 
-    skip_calibration = args.skip_calibration or args.main_only
+    skip_calibration = (args.skip_calibration or
+                        args.main_only)
 
     approved_count = 0
     rejected_count = 0
@@ -172,22 +195,27 @@ def main():
         # Load config
         config = load_sample_config(sample_id, args.samples_dir)
         if config is None:
-            print(f"  ⚠ No config.json found, skipping")
+            print("  ⚠ No config.json found, skipping")
             continue
 
         # Check if alignment exists
         if not config.get('alignment_main'):
-            print(f"  ⚠ No alignment calculated yet")
-            print(f"    Run: python scripts/step1b_run_alignments.py --samples {sample_id} --save-preview")
+            print("  ⚠ No alignment calculated yet")
+            cmd = "python scripts/step1b_run_alignments.py"
+            print(f"    Run: {cmd} --samples {sample_id} --save-preview")
             continue
 
         # Review main videos
-        print(f"\n  Main videos:")
-        main_composite = find_composite_images(sample_id, 'main', args.samples_dir)
+        print("\n  Main videos:")
+        main_composite = find_composite_images(
+            sample_id, 'main', args.samples_dir
+        )
 
         if main_composite is None:
-            print(f"    ⚠ No composite image found")
-            print(f"    Run: python scripts/step1b_run_alignments.py --samples {sample_id} --save-preview --force")
+            print("    ⚠ No composite image found")
+            cmd = "python scripts/step1b_run_alignments.py"
+            flags = "--save-preview --force"
+            print(f"    Run: {cmd} --samples {sample_id} {flags}")
         else:
             print(f"    Showing: {main_composite.name}")
             result = review_composite(sample_id, 'main', main_composite)
@@ -196,27 +224,35 @@ def main():
                 print("\n✗ Review quit by user")
                 break
             elif result == 'approved':
-                print(f"    ✓ Approved")
-                config['alignment_main']['review_status'] = 'approved'
+                print("    ✓ Approved")
+                status = 'approved'
+                config['alignment_main']['review_status'] = status
                 approved_count += 1
             elif result == 'rejected':
-                print(f"    ✗ Rejected")
-                config['alignment_main']['review_status'] = 'rejected'
+                print("    ✗ Rejected")
+                status = 'rejected'
+                config['alignment_main']['review_status'] = status
                 rejected_count += 1
             elif result == 'skipped':
-                print(f"    ⊘ Skipped")
+                print("    ⊘ Skipped")
                 skipped_count += 1
 
         # Review calibration videos if present
-        if not skip_calibration and config.get('has_calibration') and config.get('alignment_calibration'):
-            print(f"\n  Calibration videos:")
-            cal_composite = find_composite_images(sample_id, 'calibration', args.samples_dir)
+        has_cal = config.get('has_calibration')
+        has_cal_alignment = config.get('alignment_calibration')
+        if not skip_calibration and has_cal and has_cal_alignment:
+            print("\n  Calibration videos:")
+            cal_composite = find_composite_images(
+                sample_id, 'calibration', args.samples_dir
+            )
 
             if cal_composite is None:
-                print(f"    ⚠ No composite image found")
+                print("    ⚠ No composite image found")
             else:
                 print(f"    Showing: {cal_composite.name}")
-                result = review_composite(sample_id, 'calibration', cal_composite)
+                result = review_composite(
+                    sample_id, 'calibration', cal_composite
+                )
 
                 if result == 'quit':
                     print("\n✗ Review quit by user")
@@ -224,15 +260,19 @@ def main():
                     save_sample_config(sample_id, config, args.samples_dir)
                     break
                 elif result == 'approved':
-                    print(f"    ✓ Approved")
-                    config['alignment_calibration']['review_status'] = 'approved'
+                    print("    ✓ Approved")
+                    status = 'approved'
+                    key = 'alignment_calibration'
+                    config[key]['review_status'] = status
                     approved_count += 1
                 elif result == 'rejected':
-                    print(f"    ✗ Rejected")
-                    config['alignment_calibration']['review_status'] = 'rejected'
+                    print("    ✗ Rejected")
+                    status = 'rejected'
+                    key = 'alignment_calibration'
+                    config[key]['review_status'] = status
                     rejected_count += 1
                 elif result == 'skipped':
-                    print(f"    ⊘ Skipped")
+                    print("    ⊘ Skipped")
                     skipped_count += 1
 
         # Save updated config
@@ -257,10 +297,15 @@ def main():
         print()
         print(f"⚠ {rejected_count} alignments rejected")
         print("  Reprocess rejected samples with different settings:")
-        print("  python scripts/step1b_run_alignments.py --all --rejected-only --save-preview --main-motion-type euclidean")
+        cmd = "python scripts/step1b_run_alignments.py"
+        flags = "--all --rejected-only --save-preview"
+        motion = "--main-motion-type euclidean"
+        print(f"  {cmd} {flags} {motion}")
         print()
         print("  Or for specific samples:")
-        print("  python scripts/step1b_run_alignments.py --samples <ID> --save-preview --main-motion-type euclidean --force")
+        flags2 = "--samples <ID> --save-preview"
+        force = "--main-motion-type euclidean --force"
+        print(f"  {cmd} {flags2} {force}")
 
 
 if __name__ == '__main__':

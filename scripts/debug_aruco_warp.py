@@ -12,16 +12,15 @@ Usage (from project root):
     python scripts/debug_aruco_warp.py
 """
 
-import sys
-from pathlib import Path
-
 import cv2
 import numpy as np
 
 from video2vision import operators
 
 
-def visualize_aruco_warp(autolinearizer_path="data/autolinearizer_custom.json"):
+def visualize_aruco_warp(
+    autolinearizer_path="data/autolinearizer_custom.json"
+):
     """Visualize the reference marker and sample point positions"""
 
     try:
@@ -43,7 +42,7 @@ def visualize_aruco_warp(autolinearizer_path="data/autolinearizer_custom.json"):
     min_x, min_y = all_points.min(axis=0).astype(int)
     max_x, max_y = all_points.max(axis=0).astype(int)
 
-    print(f"\nReference coordinate bounds:")
+    print("\nReference coordinate bounds:")
     print(f"  X: [{min_x}, {max_x}]")
     print(f"  Y: [{min_y}, {max_y}]")
 
@@ -59,7 +58,7 @@ def visualize_aruco_warp(autolinearizer_path="data/autolinearizer_custom.json"):
     offset_y = margin - min_y
 
     # Draw marker positions
-    print(f"\nMarker points (reference):")
+    print("\nMarker points (reference):")
     for i, marker in enumerate(marker_points):
         print(f"  Marker {i}:")
         # Draw corners
@@ -90,7 +89,7 @@ def visualize_aruco_warp(autolinearizer_path="data/autolinearizer_custom.json"):
         cv2.polylines(canvas, [corners_draw], True, (0, 0, 255), 2)
 
     # Draw sample points
-    print(f"\nSample points (reference):")
+    print("\nSample points (reference):")
     for i, (x, y) in enumerate(sample_points):
         x_draw = int(x + offset_x)
         y_draw = int(y + offset_y)
@@ -125,7 +124,9 @@ def visualize_aruco_warp(autolinearizer_path="data/autolinearizer_custom.json"):
     cv2.destroyAllWindows()
 
 
-def test_homography_transform(autolinearizer_path="data/autolinearizer_custom.json"):
+def test_homography_transform(
+    autolinearizer_path="data/autolinearizer_custom.json"
+):
     """Test homography transformation with simulated detected markers"""
 
     try:
@@ -142,7 +143,7 @@ def test_homography_transform(autolinearizer_path="data/autolinearizer_custom.js
     ref_markers = np.array(auto_op.marker_points)
 
     print(f"\nReference marker shape: {ref_markers.shape}")
-    print(f"Expected shape: (4, 4, 2) - 4 markers, 4 corners, 2 coords")
+    print("Expected shape: (4, 4, 2) - 4 markers, 4 corners, 2 coords")
 
     # Test 1: Identity transformation
     print("\nTest 1: Identity transformation (reference -> reference)")
@@ -150,9 +151,9 @@ def test_homography_transform(autolinearizer_path="data/autolinearizer_custom.js
     print(f"  Reshaped to: {ref_points.shape}")
 
     H, _ = cv2.findHomography(ref_points, ref_points, cv2.RANSAC)
-    print(f"  Homography matrix:")
+    print("  Homography matrix:")
     print(H)
-    print(f"  Should be close to identity matrix")
+    print("  Should be close to identity matrix")
 
     # Transform sample points
     sample_points = np.array(auto_op.sample_points, dtype=np.float32)
@@ -165,7 +166,7 @@ def test_homography_transform(autolinearizer_path="data/autolinearizer_custom.js
     # Check error
     error = np.abs(transformed_samples - sample_points).max()
     print(f"  Max transformation error: {error:.4f} pixels")
-    print(f"  (Should be near zero for identity)")
+    print("  (Should be near zero for identity)")
 
     # Test 2: Simple translation
     print("\nTest 2: Translation transformation (+100, +50)")
@@ -179,9 +180,9 @@ def test_homography_transform(autolinearizer_path="data/autolinearizer_custom.js
     expected_translation = sample_points + np.array([100.0, 50.0])
     error = np.abs(transformed_samples - expected_translation).max()
     print(f"  Max transformation error: {error:.4f} pixels")
-    print(f"  (Should be near zero for pure translation)")
+    print("  (Should be near zero for pure translation)")
 
-    print(f"\n  Sample point 0:")
+    print("\n  Sample point 0:")
     print(f"    Original: {sample_points[0]}")
     print(f"    Transformed: {transformed_samples[0]}")
     print(f"    Expected: {expected_translation[0]}")
@@ -202,7 +203,8 @@ if __name__ == "__main__":
         help="Show visualization of reference positions",
     )
     parser.add_argument(
-        "--test", action="store_true", help="Run homography transformation tests"
+        "--test", action="store_true",
+        help="Run homography transformation tests"
     )
 
     args = parser.parse_args()

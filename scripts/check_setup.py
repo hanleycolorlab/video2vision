@@ -29,7 +29,7 @@ def main():
     # Check package installation
     print("\n1. Package Installation")
     try:
-        import video2vision
+        import video2vision  # noqa: F401
 
         print(f"   {check_mark(True)} video2vision package installed")
     except ImportError:
@@ -37,15 +37,17 @@ def main():
         issues.append("Run: python3 -m pip install .")
 
     try:
-        import cv2
+        import cv2  # noqa: F401
 
         print(f"   {check_mark(True)} opencv installed")
     except ImportError:
         print(f"   {check_mark(False)} opencv NOT installed")
-        issues.append("Run: python3 -m pip install opencv-contrib-python-headless")
+        issues.append(
+            "Run: python3 -m pip install opencv-contrib-python-headless"
+        )
 
     try:
-        import numpy
+        import numpy  # noqa: F401
 
         print(f"   {check_mark(True)} numpy installed")
     except ImportError:
@@ -57,9 +59,12 @@ def main():
 
     video_samples = Path("videos/samples")
     if video_samples.exists():
-        samples = sorted([d.name for d in video_samples.iterdir() if d.is_dir()])
+        samples = sorted(
+            [d.name for d in video_samples.iterdir() if d.is_dir()]
+        )
         print(f"   {check_mark(True)} videos/samples/ exists")
-        print(f"      Found {len(samples)} sample(s): {', '.join(samples[:5])}")
+        samples_str = ', '.join(samples[:5])
+        print(f"      Found {len(samples)} sample(s): {samples_str}")
         if len(samples) > 5:
             print(f"      ... and {len(samples) - 5} more")
     else:
@@ -83,7 +88,9 @@ def main():
             print(f"   {check_mark(True)} aruco_samples.csv found")
         else:
             print(f"   {check_mark(False)} aruco_samples.csv NOT found")
-            issues.append("Need ArUco sample values (or your calibration target data)")
+            issues.append(
+                "Need ArUco sample values (or your calibration target data)"
+            )
     else:
         print(f"   {check_mark(False)} data/ directory NOT found")
         issues.append("Need data directory with calibration files")
@@ -118,12 +125,14 @@ def main():
         )
 
         if vis_videos and uv_videos:
-            print(f"   {check_mark(True)} Sample {sample_to_check} has video pairs")
+            msg = f"Sample {sample_to_check} has video pairs"
+            print(f"   {check_mark(True)} {msg}")
             print(f"      VIS: {vis_videos[0].name}")
             print(f"      UV:  {uv_videos[0].name}")
         else:
-            print(f"   {check_mark(False)} Sample {sample_to_check} missing videos")
-            issues.append(f"Videos should be named VIS_*.MP4 and UV_*.MP4")
+            msg = f"Sample {sample_to_check} missing videos"
+            print(f"   {check_mark(False)} {msg}")
+            issues.append("Videos should be named VIS_*.MP4 and UV_*.MP4")
     else:
         print(f"   {check_mark(False)} No samples to check")
 
