@@ -20,6 +20,12 @@ Usage:
 
     # Process all samples (ignore review status)
     python scripts/step3_apply_full_pipeline.py --all --animal bombus_terrestris_dalmaticus
+
+    # Output aligned videos only (no color science transformations)
+    python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+
+    # Preview mode with aligned-only
+    python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview 30
 """
 
 import argparse
@@ -324,6 +330,93 @@ def find_video_pair(sample_dir):
     return str(vis_videos[0]), str(uv_videos[0])
 
 
+def copy_audio_to_video(source_video, target_video, output_video=None, audio_offset_frames=0, source_fps=None):
+    """Copy audio from source video to target video using ffmpeg, with optional temporal offset
+
+    Args:
+        source_video: Path to video with audio
+        target_video: Path to video without audio (will be replaced if output_video is None)
+        output_video: Optional output path (if None, replaces target_video)
+        audio_offset_frames: Number of frames to offset audio (positive = delay audio, negative = advance audio)
+        source_fps: FPS of source video (required if audio_offset_frames != 0)
+
+    Returns:
+        True if successful, False otherwise
+    """
+    import subprocess
+    import shutil
+
+    if output_video is None:
+        # Create temp file and replace original
+        output_video = str(target_video) + ".tmp.mp4"
+        replace_original = True
+    else:
+        replace_original = False
+
+    try:
+        # Build ffmpeg command
+        cmd = [
+            "ffmpeg",
+            "-i", str(target_video),  # Video source (no audio)
+            "-i", str(source_video),  # Audio source
+            "-c:v", "copy",           # Copy video codec (no re-encode)
+            "-c:a", "aac",            # Encode audio as AAC
+            "-map", "0:v:0",          # Take video from first input
+            "-map", "1:a:0?",         # Take audio from second input (? makes it optional)
+        ]
+
+        # Apply temporal offset if needed
+        if audio_offset_frames != 0:
+            if source_fps is None:
+                raise ValueError("source_fps required when audio_offset_frames != 0")
+
+            # Convert frame offset to seconds
+            offset_seconds = audio_offset_frames / source_fps
+
+            if offset_seconds > 0:
+                # Positive offset: delay audio (add silence at start)
+                cmd.extend(["-af", f"adelay={int(offset_seconds * 1000)}|{int(offset_seconds * 1000)}"])
+            else:
+                # Negative offset: advance audio (skip audio from start)
+                # Note: we need to insert this BEFORE the audio input
+                cmd.insert(3, "-ss")
+                cmd.insert(4, str(abs(offset_seconds)))
+
+        cmd.extend([
+            "-shortest",              # Match shortest stream duration
+            "-y",                     # Overwrite output
+            str(output_video)
+        ])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+
+        if result.returncode != 0:
+            # Audio might not exist in source, which is okay
+            if "does not contain any stream" in result.stderr or "No such stream" in result.stderr:
+                return False
+            else:
+                print(f"    Warning: ffmpeg error: {result.stderr[:100]}")
+                return False
+
+        if replace_original:
+            # Replace original with audio-merged version
+            shutil.move(output_video, target_video)
+
+        return True
+
+    except subprocess.TimeoutExpired:
+        print("    Warning: ffmpeg timeout")
+        return False
+    except Exception as e:
+        print(f"    Warning: Could not copy audio: {e}")
+        return False
+
+
 def trim_video(input_path, output_path, start_frame=0, max_frames=None):
     """Trim video starting from a specific frame
 
@@ -360,6 +453,130 @@ def trim_video(input_path, output_path, start_frame=0, max_frames=None):
     out.release()
 
     return frame_count
+
+
+def apply_alignment_only(
+    vis_path,
+    uv_path,
+    alignment_params,
+    aligned_vis_output_path,
+    aligned_uv_output_path,
+    batch_size=30,
+    preview_frames=None,
+):
+    """Apply alignment transformation only (no color science)
+
+    This outputs the original videos with only the alignment transformation applied.
+    UV video gets flipped (if needed) and warped to match VIS dimensions.
+    VIS video is output as-is (possibly trimmed if preview mode is active).
+
+    Args:
+        vis_path: Path to visible video
+        uv_path: Path to UV video
+        alignment_params: Dict with 'homography_matrix', 'flip', 'temporal_shift'
+        aligned_vis_output_path: Where to save aligned VIS video
+        aligned_uv_output_path: Where to save aligned UV video (warped)
+        batch_size: Frames to process per batch
+        preview_frames: If set, only process first N frames (preview mode)
+    """
+    # Get video dimensions from VIS (reference)
+    cap_vis = cv2.VideoCapture(vis_path)
+    vis_width = int(cap_vis.get(cv2.CAP_PROP_FRAME_WIDTH))
+    vis_height = int(cap_vis.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap_vis.release()
+
+    # Check UV dimensions
+    cap_uv = cv2.VideoCapture(uv_path)
+    uv_width = int(cap_uv.get(cv2.CAP_PROP_FRAME_WIDTH))
+    uv_height = int(cap_uv.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap_uv.release()
+
+    # Determine output size
+    expected_size = (vis_width, vis_height)
+
+    if alignment_params.get("output_size"):
+        alignment_output = tuple(alignment_params["output_size"])
+        if alignment_output != expected_size:
+            print(
+                f"Warning: Alignment output size {alignment_output} doesn't match VIS size {expected_size}"
+            )
+            expected_size = alignment_output
+    elif alignment_params.get("homography_matrix"):
+        if (uv_width, uv_height) != expected_size:
+            raise ValueError(
+                f"Video size mismatch: UV is {uv_width}x{uv_height} but VIS is {vis_width}x{vis_height}. "
+                f"Run step1b again to regenerate alignment with correct output_size."
+            )
+
+    # Build pipeline for aligned outputs
+    pipe = pipeline.Pipeline()
+
+    # Loaders - use PreviewLoader if in preview mode
+    if preview_frames is not None:
+        vis_loader_idx = pipe.add_operator(
+            PreviewLoader(vis_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        )
+        uv_loader_idx = pipe.add_operator(
+            PreviewLoader(uv_path, expected_size=expected_size, batch_size=batch_size, max_frames=preview_frames)
+        )
+    else:
+        vis_loader_idx = pipe.add_operator(
+            io.Loader(vis_path, expected_size=expected_size, batch_size=batch_size)
+        )
+        uv_loader_idx = pipe.add_operator(
+            io.Loader(uv_path, expected_size=expected_size, batch_size=batch_size)
+        )
+
+    # Apply flip to UV if needed
+    current_uv_idx = uv_loader_idx
+    flip_type = alignment_params.get("flip", "none")
+
+    if flip_type == "horizontal":
+        flip_idx = pipe.add_operator(HorizontalFlip())
+        pipe.add_edge(uv_loader_idx, flip_idx, in_slot=0)
+        current_uv_idx = flip_idx
+    elif flip_type == "vertical":
+        flip_idx = pipe.add_operator(VerticalFlip())
+        pipe.add_edge(uv_loader_idx, flip_idx, in_slot=0)
+        current_uv_idx = flip_idx
+
+    # Apply homography warp to UV
+    if alignment_params.get("homography_matrix"):
+        homography = np.array(alignment_params["homography_matrix"])
+        output_size = tuple(alignment_params.get("output_size", expected_size))
+
+        warp_op = Warp(homography, output_size=output_size)
+        warp_idx = pipe.add_operator(warp_op)
+        pipe.add_edge(current_uv_idx, warp_idx, in_slot=0)
+        current_uv_idx = warp_idx
+
+    # Writer for aligned UV
+    uv_writer_idx = pipe.add_operator(io.Writer(str(aligned_uv_output_path)))
+    pipe.add_edge(current_uv_idx, uv_writer_idx, in_slot=0)
+
+    # Writer for VIS (pass-through, just for temporal alignment if needed)
+    vis_writer_idx = pipe.add_operator(io.Writer(str(aligned_vis_output_path)))
+    pipe.add_edge(vis_loader_idx, vis_writer_idx, in_slot=0)
+
+    # Run pipeline
+    pipe.set_batch_size(batch_size)
+    pipe.run()
+
+    # Copy audio from original videos to aligned outputs
+    print("    Copying audio... ", end="", flush=True)
+    vis_audio_success = copy_audio_to_video(vis_path, aligned_vis_output_path)
+    uv_audio_success = copy_audio_to_video(uv_path, aligned_uv_output_path)
+
+    if vis_audio_success or uv_audio_success:
+        audio_status = []
+        if vis_audio_success:
+            audio_status.append("VIS")
+        if uv_audio_success:
+            audio_status.append("UV")
+        print(f"✓ ({', '.join(audio_status)})")
+    else:
+        print("⊘ (no audio tracks)")
+
 
 
 def apply_full_pipeline(
@@ -509,6 +726,27 @@ def apply_full_pipeline(
     # Run pipeline - batch size matches notebook (divided by 2 for full pipeline)
     pipe.set_batch_size(batch_size // 2)
     pipe.run()
+
+    # Copy audio from VIS video to both outputs
+    # The VIS video is the reference, so its audio timing is correct for the output
+    # The temporal_shift was applied internally by AutoTemporalAlign, so the output
+    # video frames are already synchronized with the VIS audio timeline
+    print("    Copying audio... ", end="", flush=True)
+
+    # Copy audio from VIS to both animal and human outputs
+    # No offset needed because the pipeline output is already aligned to VIS timeline
+    animal_audio_success = copy_audio_to_video(vis_path, animal_output_path)
+    human_audio_success = copy_audio_to_video(vis_path, human_output_path)
+
+    if animal_audio_success or human_audio_success:
+        audio_status = []
+        if animal_audio_success:
+            audio_status.append("animal")
+        if human_audio_success:
+            audio_status.append("human")
+        print(f"✓ ({', '.join(audio_status)})")
+    else:
+        print("⊘ (no audio track)")
 
 
 def generate_ghosting_image(vis_path, uv_path, alignment_params, output_path):
@@ -968,28 +1206,39 @@ def main():
         help="Preview mode: process only first N frames (default: 30). "
         'Outputs will have "_preview" suffix.',
     )
+    parser.add_argument(
+        "--aligned-only",
+        action="store_true",
+        help="Output aligned videos only (no linearization or animal vision conversion). "
+        "Produces VIS_aligned.mp4 and UV_aligned.mp4 for each sample.",
+    )
 
     args = parser.parse_args()
 
     # Load global pipeline config
     pipeline_config = load_pipeline_config(args.pipeline_config)
 
-    # Override animal type if specified
-    if args.animal:
-        pipeline_config["animal_type"] = args.animal
+    # Skip animal vision setup if aligned-only mode
+    if args.aligned_only:
+        animal_type = None
+        sense_converter = None
+    else:
+        # Override animal type if specified
+        if args.animal:
+            pipeline_config["animal_type"] = args.animal
 
-    # Validate animal type
-    animal_type = pipeline_config.get("animal_type")
-    if not animal_type:
-        print(
-            "Error: animal_type not specified in pipeline_config.json or --animal flag"
-        )
-        sys.exit(1)
+        # Validate animal type
+        animal_type = pipeline_config.get("animal_type")
+        if not animal_type:
+            print(
+                "Error: animal_type not specified in pipeline_config.json or --animal flag"
+            )
+            sys.exit(1)
 
-    # Load sense converter
-    sense_converter = load_sense_converter(animal_type)
-    if sense_converter is None:
-        sys.exit(1)
+        # Load sense converter
+        sense_converter = load_sense_converter(animal_type)
+        if sense_converter is None:
+            sys.exit(1)
 
     # Set samples directory
     samples_dir = Path(args.samples_dir)
@@ -1014,17 +1263,23 @@ def main():
         sys.exit(1)
 
     print("=" * 70)
-    print("Step 3: Apply Full Pipeline (Alignment + Linearization + Animal Vision)")
+    if args.aligned_only:
+        print("Step 3: Apply Alignment Only (No Color Science)")
+    else:
+        print("Step 3: Apply Full Pipeline (Alignment + Linearization + Animal Vision)")
     print("=" * 70)
     print(f"Samples: {len(samples)}")
-    print(f"Animal type: {animal_type}")
-    print(
-        f"Camera: {'Sony SLog3' if pipeline_config.get('is_sony_camera') else 'Generic'}"
-    )
+    if args.aligned_only:
+        print("Mode: Alignment only (no linearization or animal vision)")
+    else:
+        print(f"Animal type: {animal_type}")
+        print(
+            f"Camera: {'Sony SLog3' if pipeline_config.get('is_sony_camera') else 'Generic'}"
+        )
     print(f"Output directory: {args.output_dir}")
     print(f"Batch size: {args.batch_size}")
     if args.approved_only:
-        print("Mode: Approved alignments only")
+        print("Filter: Approved alignments only")
     if args.preview is not None:
         print(f"🎬 PREVIEW MODE: Processing first {args.preview} frames only")
     print()
@@ -1065,15 +1320,18 @@ def main():
                 results.append((sample_id, "SKIPPED", "Not approved"))
                 continue
 
-        # Check for calibration patches
-        calibration_patches = config.get("calibration_patches")
-        if not calibration_patches:
-            print(f"  ⚠ No calibration patch data")
-            print(
-                f"    Run: python scripts/step2_extract_calibration.py --samples {sample_id}"
-            )
-            results.append((sample_id, "SKIPPED", "No calibration"))
-            continue
+        # Check for calibration patches (only required if not aligned-only mode)
+        if not args.aligned_only:
+            calibration_patches = config.get("calibration_patches")
+            if not calibration_patches:
+                print("  ⚠ No calibration patch data")
+                print(
+                    f"    Run: python scripts/step2_extract_calibration.py --samples {sample_id}"
+                )
+                results.append((sample_id, "SKIPPED", "No calibration"))
+                continue
+        else:
+            calibration_patches = None
 
         # Find video files
         sample_dir = Path(samples_dir) / sample_id
@@ -1087,18 +1345,21 @@ def main():
         print(f"  VIS: {Path(vis_path).name}")
         print(f"  UV:  {Path(uv_path).name}")
 
-        # Build linearizer
-        print(f"  Building linearizer... ", end="", flush=True)
-        try:
-            linearizer = build_linearizer(calibration_patches, pipeline_config)
-            if linearizer is None:
-                results.append((sample_id, "FAILED", "Linearizer build failed"))
+        # Build linearizer (only if not aligned-only mode)
+        if not args.aligned_only:
+            print("  Building linearizer... ", end="", flush=True)
+            try:
+                linearizer = build_linearizer(calibration_patches, pipeline_config)
+                if linearizer is None:
+                    results.append((sample_id, "FAILED", "Linearizer build failed"))
+                    continue
+                print("✓")
+            except Exception as e:
+                print(f"✗ Error: {e}")
+                results.append((sample_id, "FAILED", f"Linearizer: {str(e)[:50]}"))
                 continue
-            print(f"✓")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            results.append((sample_id, "FAILED", f"Linearizer: {str(e)[:50]}"))
-            continue
+        else:
+            linearizer = None
 
         # Output paths
         sample_output_dir = output_dir / sample_id
@@ -1106,74 +1367,121 @@ def main():
 
         # Add preview suffix if in preview mode
         preview_suffix = "_preview" if args.preview is not None else ""
-        animal_output_path = (
-            sample_output_dir / f"{sample_id}_animal_{animal_type}{preview_suffix}.mp4"
-        )
-        human_output_path = sample_output_dir / f"{sample_id}_human{preview_suffix}.mp4"
 
-        # Check if already exists
-        if (
-            animal_output_path.exists()
-            and human_output_path.exists()
-            and not args.force
-        ):
-            print(f"  ✓ Already processed")
-            print(f"    Animal: {animal_output_path.name}")
-            print(f"    Human:  {human_output_path.name}")
-            print(f"    (use --force to reprocess)")
-            results.append((sample_id, "SUCCESS", "Already exists"))
-            continue
+        if args.aligned_only:
+            # Aligned-only mode: output VIS_aligned and UV_aligned
+            aligned_vis_output_path = sample_output_dir / f"{sample_id}_VIS_aligned{preview_suffix}.mp4"
+            aligned_uv_output_path = sample_output_dir / f"{sample_id}_UV_aligned{preview_suffix}.mp4"
 
-        # Process full pipeline
-        print(f"  Processing full pipeline... ", end="", flush=True)
-        start = time.time()
+            # Check if already exists
+            if (
+                aligned_vis_output_path.exists()
+                and aligned_uv_output_path.exists()
+                and not args.force
+            ):
+                print("  ✓ Already processed")
+                print(f"    VIS aligned: {aligned_vis_output_path.name}")
+                print(f"    UV aligned:  {aligned_uv_output_path.name}")
+                print("    (use --force to reprocess)")
+                results.append((sample_id, "SUCCESS", "Already exists"))
+                continue
 
-        try:
-            apply_full_pipeline(
-                vis_path,
-                uv_path,
-                alignment_main,
-                linearizer,
-                sense_converter,
-                animal_output_path,
-                human_output_path,
-                batch_size=args.batch_size,
-                preview_frames=args.preview,
+            # Process alignment only
+            print("  Applying alignment... ", end="", flush=True)
+            start = time.time()
+
+            try:
+                apply_alignment_only(
+                    vis_path,
+                    uv_path,
+                    alignment_main,
+                    aligned_vis_output_path,
+                    aligned_uv_output_path,
+                    batch_size=args.batch_size,
+                    preview_frames=args.preview,
+                )
+                elapsed = time.time() - start
+                print(f"✓ Done in {elapsed:.1f}s")
+                print("  Output:")
+                print(f"    VIS aligned: {aligned_vis_output_path.name}")
+                print(f"    UV aligned:  {aligned_uv_output_path.name}")
+                results.append((sample_id, "SUCCESS", "Aligned"))
+            except Exception as e:
+                print(f"✗ Error: {e}")
+                import traceback
+                traceback.print_exc()
+                results.append((sample_id, "FAILED", f"{str(e)[:50]}"))
+                continue
+        else:
+            # Full pipeline mode: animal vision and human vision
+            animal_output_path = (
+                sample_output_dir / f"{sample_id}_animal_{animal_type}{preview_suffix}.mp4"
             )
-            elapsed = time.time() - start
-            print(f"✓ Done in {elapsed:.1f}s")
-            print(f"  Output:")
-            print(f"    Animal: {animal_output_path.name}")
-            print(f"    Human:  {human_output_path.name}")
-            results.append((sample_id, "SUCCESS", "Processed"))
+            human_output_path = sample_output_dir / f"{sample_id}_human{preview_suffix}.mp4"
 
-            # Generate analysis if requested
-            if args.save_analysis:
-                print("  Generating analysis... ", end="", flush=True)
-                try:
-                    generate_pipeline_analysis(
-                        sample_id,
-                        config,
-                        calibration_patches,
-                        linearizer,
-                        sense_converter,
-                        animal_type,
-                        pipeline_config,
-                        args.output_dir,
-                        vis_path,
-                        uv_path,
-                        alignment_main,
-                    )
-                    print("✓")
-                except Exception as e:
-                    print(f"⚠ Warning: Analysis generation failed: {e}")
-        except Exception as e:
-            print(f"✗ Error: {e}")
-            import traceback
+            # Check if already exists
+            if (
+                animal_output_path.exists()
+                and human_output_path.exists()
+                and not args.force
+            ):
+                print("  ✓ Already processed")
+                print(f"    Animal: {animal_output_path.name}")
+                print(f"    Human:  {human_output_path.name}")
+                print("    (use --force to reprocess)")
+                results.append((sample_id, "SUCCESS", "Already exists"))
+                continue
 
-            traceback.print_exc()
-            results.append((sample_id, "FAILED", f"{str(e)[:50]}"))
-            continue
+            # Process full pipeline
+            print("  Processing full pipeline... ", end="", flush=True)
+            start = time.time()
+
+            try:
+                apply_full_pipeline(
+                    vis_path,
+                    uv_path,
+                    alignment_main,
+                    linearizer,
+                    sense_converter,
+                    animal_output_path,
+                    human_output_path,
+                    batch_size=args.batch_size,
+                    preview_frames=args.preview,
+                )
+                elapsed = time.time() - start
+                print(f"✓ Done in {elapsed:.1f}s")
+                print("  Output:")
+                print(f"    Animal: {animal_output_path.name}")
+                print(f"    Human:  {human_output_path.name}")
+                results.append((sample_id, "SUCCESS", "Processed"))
+
+                # Generate analysis if requested
+                if args.save_analysis:
+                    print("  Generating analysis... ", end="", flush=True)
+                    try:
+                        generate_pipeline_analysis(
+                            sample_id,
+                            config,
+                            calibration_patches,
+                            linearizer,
+                            sense_converter,
+                            animal_type,
+                            pipeline_config,
+                            args.output_dir,
+                            vis_path,
+                            uv_path,
+                            alignment_main,
+                        )
+                        print("✓")
+                    except Exception as e:
+                        print(f"⚠ Warning: Analysis generation failed: {e}")
+            except Exception as e:
+                print(f"✗ Error: {e}")
+                import traceback
+
+                traceback.print_exc()
+                results.append((sample_id, "FAILED", f"{str(e)[:50]}"))
+                continue
 
     # Summary
     print("\n" + "=" * 70)
@@ -1193,8 +1501,12 @@ def main():
     print(f"Skipped: {skipped_count}")
 
     if success_count > 0:
-        print(f"\n✓ Animal vision videos saved to: {args.output_dir}")
-        print(f"\nAll done! Your {animal_type} vision videos are ready for analysis.")
+        if args.aligned_only:
+            print(f"\n✓ Aligned videos saved to: {args.output_dir}")
+            print("\nAll done! Your aligned VIS and UV videos are ready.")
+        else:
+            print(f"\n✓ Animal vision videos saved to: {args.output_dir}")
+            print(f"\nAll done! Your {animal_type} vision videos are ready for analysis.")
 
 
 if __name__ == "__main__":

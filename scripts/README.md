@@ -23,6 +23,24 @@ python scripts/step2_extract_calibration.py --all
 python scripts/step3_apply_full_pipeline.py --approved-only
 ```
 
+**Quick start for aligned-only mode (skip calibration):**
+
+```bash
+source .venv/bin/activate
+
+# Step 1a: Select flips for all samples (10 min - click through)
+python scripts/step1a_select_flips.py --all
+
+# Step 1b: Calculate alignments + generate previews (~1-2 hours)
+python scripts/step1b_run_alignments.py --all --save-preview
+
+# Step 1c: Review alignment composites (~2-3 min)
+python scripts/step1c_review_alignments.py --all
+
+# Step 3: Output aligned videos only (no calibration needed)
+python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+```
+
 **Using a different samples directory:**
 
 ```bash
@@ -458,6 +476,15 @@ python scripts/step3_apply_full_pipeline.py --samples 001 005 --animal apis
 # Process all samples (ignoring review status)
 python scripts/step3_apply_full_pipeline.py --all --animal bombus_terrestris_dalmaticus
 
+# ALIGNED-ONLY MODE: Output aligned videos without color science transformations
+python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+
+# Aligned-only with preview mode
+python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview
+
+# Aligned-only for specific samples
+python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --aligned-only
+
 # Generate analysis plots and visualizations
 python scripts/step3_apply_full_pipeline.py --approved-only --save-analysis
 
@@ -481,14 +508,22 @@ python scripts/step3_apply_full_pipeline.py --approved-only --pipeline-config /p
 **What it does:**
 
 - Loads alignment parameters from `config.json`
-- Builds linearizer from calibration patch data
-- Loads sense converter for animal vision
-- Applies complete pipeline in single pass:
-  - Loader → Flip → Warp (alignment) → Linearizer → SenseConverter → Writer
-- No intermediate video exports (avoids recompression)
-- Outputs TWO videos per sample:
-  - Animal vision (3-4 channels depending on animal)
-  - Human vision (RGB from linearized VIS channels)
+- **Standard mode** (default):
+  - Builds linearizer from calibration patch data
+  - Loads sense converter for animal vision
+  - Applies complete pipeline in single pass:
+    - Loader → Flip → Warp (alignment) → Linearizer → SenseConverter → Writer
+  - No intermediate video exports (avoids recompression)
+  - Outputs TWO videos per sample:
+    - Animal vision (3-4 channels depending on animal)
+    - Human vision (RGB from linearized VIS channels)
+- **Aligned-only mode** (`--aligned-only`):
+  - Applies ONLY geometric alignment transformation (no color science)
+  - Skips linearization and animal vision conversion
+  - Does NOT require calibration patches
+  - Outputs TWO videos per sample:
+    - VIS aligned (pass-through, possibly trimmed in preview mode)
+    - UV aligned (with flip and warp applied to match VIS dimensions)
 
 **Options:**
 
@@ -496,6 +531,7 @@ python scripts/step3_apply_full_pipeline.py --approved-only --pipeline-config /p
 - `--all`: Process all samples (ignore review status)
 - `--samples ID1 ID2 ...`: Process specific samples
 - `--animal TYPE`: Override animal type from pipeline config
+- `--aligned-only`: Output aligned videos only (no linearization or animal vision conversion)
 - `--pipeline-config PATH`: Custom pipeline config JSON
 - `--output-dir DIR`: Output directory (default: `videos/output`)
 - `--batch-size N`: Frames per batch (default: 32)
@@ -515,13 +551,23 @@ python scripts/step3_apply_full_pipeline.py --approved-only --pipeline-config /p
 
 **Output:**
 
+Standard mode:
+
 ```
 videos/output/001/
 ├── 001_animal_apis.mp4      # Animal vision video
 └── 001_human.mp4             # Human-visible representation
 ```
 
-If `--save-analysis` is used:
+Aligned-only mode (`--aligned-only`):
+
+```
+videos/output/001/
+├── 001_VIS_aligned.mp4      # VIS video (pass-through)
+└── 001_UV_aligned.mp4       # UV video (with flip and warp applied)
+```
+
+If `--save-analysis` is used (standard mode only):
 
 ```
 videos/output/001/analysis/
@@ -690,6 +736,7 @@ videos/samples/001/
 5. **Config.json is your friend** - All parameters saved, can manually edit
 6. **Use preview mode** - Test step3 quickly with `--preview` before full processing
 7. **Save analysis** - Use `--save-analysis` to generate quality metrics
+8. **Use --aligned-only when you don't need color science** - If you just need geometrically aligned VIS and UV videos for other analysis, skip steps 2 and use `--aligned-only` in step 3
 
 ---
 
@@ -762,9 +809,30 @@ python scripts/step1c_review_alignments.py --all
 # Repeat until all approved
 ```
 
+### Output aligned videos only (no color science):
+
+```bash
+# Get aligned videos without linearization or animal vision conversion
+# This is useful if you just need geometrically aligned videos for other analysis
+
+# Process approved samples - no calibration patches needed
+python scripts/step3_apply_full_pipeline.py --approved-only --aligned-only
+
+# Test with preview mode first
+python scripts/step3_apply_full_pipeline.py --samples 001 --aligned-only --preview
+
+# Process specific samples
+python scripts/step3_apply_full_pipeline.py --samples 001 006 012 --aligned-only
+
+# Note: Steps 1a, 1b, and 1c are still required for alignment parameters
+# Step 2 (calibration) is NOT needed for aligned-only mode
+```
+
 ---
 
 ## What You Get After Step 3
+
+### Standard Mode (Default)
 
 For each processed sample, you'll have two output videos in `videos/output/{sample_id}/`:
 
@@ -778,7 +846,21 @@ For each processed sample, you'll have two output videos in `videos/output/{samp
    - RGB representation from the linearized visible channels
    - Useful for comparison and verification
 
-**Example output structure:**
+### Aligned-Only Mode (`--aligned-only`)
+
+For each processed sample, you'll have two geometrically aligned videos in `videos/output/{sample_id}/`:
+
+1. **`{sample_id}_VIS_aligned.mp4`** - Aligned visible video
+
+   - Pass-through of original VIS video
+   - Possibly trimmed if preview mode is used
+
+2. **`{sample_id}_UV_aligned.mp4`** - Aligned UV video
+   - UV video with flip and homography warp applied
+   - Matches VIS video dimensions and alignment
+   - No color science transformations
+
+**Example output structure (standard mode):**
 
 ```
 videos/output/
@@ -795,5 +877,18 @@ videos/output/
 ├── 006/
 │   ├── 006_animal_apis.mp4
 │   └── 006_human.mp4
+└── ...
+```
+
+**Example output structure (aligned-only mode):**
+
+```
+videos/output/
+├── 001/
+│   ├── 001_VIS_aligned.mp4      # VIS video (pass-through)
+│   └── 001_UV_aligned.mp4       # UV video (aligned)
+├── 006/
+│   ├── 006_VIS_aligned.mp4
+│   └── 006_UV_aligned.mp4
 └── ...
 ```
