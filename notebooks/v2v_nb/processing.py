@@ -201,7 +201,10 @@ def build_and_run_full_pipeline(line_op: v2v.ElementwiseOperator):
         )
         write_op = full_pipe.nodes[write_idx]['operator']
         # is_3band_out can trigger FileNotFound
-        write_op.separate_bands = not config.is_3band_out
+        write_op.separate_bands = (
+            (not config.is_3band_out) and
+            (config.out_extension.lower() not in {'tif', 'tiff'})
+        )
         full_pipe.remove_edge(align_idx, write_idx)
         full_pipe.add_edge(align_idx, line_idx, in_slot=0)
 
@@ -270,15 +273,31 @@ def build_and_save_alignment_pipeline(warp_op: v2v.Warp):
     if config['vis_path'] is None:
         print('Please specify path to visible image.')
         return
+    out_fmt = config['out_format'].lower()
+    if not config['build_video_pipeline']:
+        if out_fmt == 'mp4':
+            print(
+                'mp4 output format is only supported when building a video '
+                'pipeline.'
+            )
+            return
+        elif out_fmt not in v2v.io._IMAGE_EXTENSIONS:
+            print(
+                f"Output format {config['out_format']} not recognized; "
+                f"supported options are {v2v.io._IMAGE_EXTENSIONS}."
+            )
+            return
+    if (out_fmt != 'mp4') and config['build_video_pipeline']:
+        print('mp4 output format is required when building a video pipeline.')
+        return
 
     if config['build_video_pipeline']:
         align_op = v2v.AutoTemporalAlign(
             time_shift_range=[-10, 10], bands=[[0, 1, 2], []]
         )
-        write_op = v2v.Writer(extension='mp4')
     else:
         align_op = v2v.AutoAlign(num_votes=4, bands=[[0, 1, 2], []])
-        write_op = v2v.Writer(extension='png')
+    write_op = v2v.Writer(extension=config['out_format'])
 
     pipe = v2v.Pipeline()
 

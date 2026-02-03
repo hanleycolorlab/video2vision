@@ -52,6 +52,7 @@ PARAM_TYPES: Dict[str, str] = {
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'path',
     'build_video_pipeline': 'bool',
+    'out_format': 'string',
     # This is used in the autolinearizer-builder notebook
     'save_auto_op_path': 'path',
     # This is used in the converter-builder notebook
@@ -61,7 +62,7 @@ PARAM_TYPES: Dict[str, str] = {
     'test_array': 'array',
     'test_bool': 'bool',
     'test_path': 'path',
-    'test_str': 'str',
+    'test_str': 'string',
     'test_int': 'int',
 }
 
@@ -93,6 +94,7 @@ PARAM_CAPTIONS: Dict[str, str] = {
     # This is used in the alignment-pipeline-builder notebook
     'save_align_pipe_path': 'Alignment Pipeline',
     'build_video_pipeline': 'Build Video Pipeline?',
+    'out_format': 'Output Format',
     # This is used in the autolinearizer-builder notebook
     'save_auto_op_path': 'Autolinearizer Path',
     # This is used in the converter-builder notebook
@@ -107,6 +109,11 @@ PARAM_CAPTIONS: Dict[str, str] = {
 }
 
 PARAM_PARSE = {'coe': np.array}
+
+PARAM_DEFAULTS = {
+    'out_format': 'png',
+    'batch_size': 4,
+}
 
 
 class Config:
@@ -127,7 +134,9 @@ class Config:
     def __init__(self):
         self._cache_ready = False
         self._is_video = None
-        self._values['batch_size'] = 16
+
+        for k, v in PARAM_DEFAULTS.items():
+            self[k] = v
 
         if os.path.exists(DEFAULTS_PATH):
             try:
@@ -174,6 +183,13 @@ class Config:
                 elif PARAM_TYPES[k] != 'array':
                     v = '' if (v is None) else str(v)
                 self._nb_labels[k].value = v
+
+            if k == 'build_video_pipeline':
+                if v:
+                    self['out_format'] = 'mp4'
+                else:
+                    self['out_format'] = 'png'
+
         else:
             raise KeyError(k)
 
@@ -211,6 +227,8 @@ class Config:
 
     @property
     def is_video(self) -> bool:
+        # We run this through here because out_format and is_video_pipeline are
+        # only set in the alignment builder notebook
         if self._is_video is None:
             if self['align_pipe_path'] is None:
                 raise ParamNotSet('align_pipe_path')
@@ -356,9 +374,7 @@ def clear_all():
     _config['experiment_name'] = None
 
     for k in PARAM_TYPES.keys():
-        _config[k] = None
-
-    _config['batch_size'] = 16
+        _config[k] = PARAM_DEFAULTS.get(k, None)
 
 
 def _get_size(path: str) -> Tuple[int, int]:
