@@ -400,7 +400,7 @@ class IOTest(unittest.TestCase):
                 temp_path = os.path.join(temp_root, f'0000{i}.tif')
                 self.assertTrue(os.path.exists(temp_path))
                 image = tifffile.imread(temp_path)
-                self.assertEqual(image.shape, (16, 16, 4))
+                self.assertEqual(image.shape, (4, 16, 16))
                 self.assertTrue((image == 256).all())
 
     def test_writer_video_handling(self):

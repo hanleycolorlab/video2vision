@@ -68,7 +68,18 @@ def load(path: str, out: Optional[np.ndarray] = None,
     if path.lower().endswith(('.tif', '.tiff')):
         if not has_tiff:
             raise ImportError('tifffile is needed to read tif files')
-        image = tifffile.imread(path)
+        with tifffile.TiffFile(path) as tif:
+            axes = tif.series[0].axes.upper()
+            image = tif.asarray()
+        if axes in {'CYX', 'QYX', 'SXY'}:
+            image = np.moveaxis(image, 0, -1)
+        elif axes == 'YX':
+            image = image.reshape(*image.shape, 1)
+        elif axes not in {'YXC', 'YXQ', 'YXS'}:
+            raise ValueError(
+                f'Could not interpret TIFF metadata; axes are {axes}'
+            )
+
         # Rescale to [0, 1] and float32
         if not for_display:
             image = _convert_and_scale_uint8(image, out=out)
@@ -171,8 +182,16 @@ def save(image: np.ndarray, path: str):
     elif path.lower().endswith(('.tif', '.tiff')):
         if not has_tiff:
             raise ImportError('tifffile is needed to write tif files')
-        # photometric='minisblack' suppresses a DeprecationWarning.
-        tifffile.imwrite(path, image, photometric='minisblack')
+        tifffile.imwrite(
+            path,
+            np.moveaxis(image, -1, 0),
+            imagej=True,
+            # This specifies metadata to be included that specifies the 0th
+            # dimension is the channel dimension. This eliminates an issue
+            # where viewer program's interpretation of the image layout is
+            # inconsistent.
+            metadata={'axes': 'CYX'},
+        )
 
     elif path.lower().endswith(('.nef', '.arw')):
         raise NotImplementedError('Saving in raw form is not supported')

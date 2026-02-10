@@ -264,7 +264,9 @@ class DisplayTest(unittest.TestCase):
             path_0 = os.path.join(temp_root, f'0.{ext}')
             if ext == 'tif':
                 self.assertTrue(has_tiff, 'Needs tifffile for this test')
-                tifffile.imwrite(path_0, image, photometric='minisblack')
+                tifffile.imwrite(
+                    path_0, np.moveaxis(image, -1, 0), photometric='minisblack'
+                )
             else:
                 Image.fromarray(image).save(path_0)
 
@@ -272,7 +274,9 @@ class DisplayTest(unittest.TestCase):
             path_1 = os.path.join(temp_root, f'1.{ext}')
             if ext == 'tif':
                 self.assertTrue(has_tiff, 'Needs tifffile for this test')
-                tifffile.imwrite(path_1, image, photometric='minisblack')
+                tifffile.imwrite(
+                    path_1, np.moveaxis(image, -1, 0), photometric='minisblack'
+                )
             else:
                 Image.fromarray(image).save(path_1)
 
