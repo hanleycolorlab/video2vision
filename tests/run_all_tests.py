@@ -9,6 +9,7 @@ from io_tests import *
 from notebook_tests import *
 from operator_tests import *
 from pipeline_tests import *
+from sample_config_tests import *
 from warp_tests import *
 from utils_tests import *
 

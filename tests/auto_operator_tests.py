@@ -186,6 +186,88 @@ class AutoAlignTest(unittest.TestCase):
         self.assertTrue((out_1['image'] == out_2['image']).all())
 
 
+class AutoAlignParamsTest(unittest.TestCase):
+    def test_motion_type_validation(self):
+        '''Invalid motion_type raises ValueError.'''
+        with self.assertRaises(ValueError):
+            v2v.AutoAlign(
+                bands=[[0], [0]], motion_type='invalid'
+            )
+
+    def test_motion_type_default(self):
+        '''Default motion_type is homography.'''
+        op = v2v.AutoAlign(bands=[[0], [0]])
+        self.assertEqual(op.motion_type, 'homography')
+
+    def test_motion_type_euclidean(self):
+        op = v2v.AutoAlign(
+            bands=[[0], [0]], motion_type='euclidean'
+        )
+        self.assertEqual(op.motion_type, 'euclidean')
+
+    def test_motion_type_affine(self):
+        op = v2v.AutoAlign(
+            bands=[[0], [0]], motion_type='affine'
+        )
+        self.assertEqual(op.motion_type, 'affine')
+
+    def test_initial_transform_none(self):
+        op = v2v.AutoAlign(bands=[[0], [0]])
+        self.assertIsNone(op.initial_transform)
+
+    def test_initial_transform_stored(self):
+        '''initial_transform is stored as numpy array.'''
+        transform = [[1, 0, 10], [0, 1, 20], [0, 0, 1]]
+        op = v2v.AutoAlign(
+            bands=[[0], [0]], initial_transform=transform
+        )
+        self.assertIsNotNone(op.initial_transform)
+        self.assertTrue(isinstance(op.initial_transform, np.ndarray))
+        expected = np.array(transform)
+        self.assertTrue(
+            (np.abs(op.initial_transform - expected) < 1e-6).all()
+        )
+
+    def test_serialization_with_motion_type(self):
+        '''motion_type round-trips through serialization.'''
+        op = v2v.AutoAlign(
+            bands=[[0], [0]], motion_type='affine'
+        )
+        op_dict = json.loads(json.dumps(op._to_json()))
+        op_class = v2v.OPERATOR_REGISTRY.get(
+            op_dict.pop('class')
+        )
+        op2 = op_class(**op_dict)
+        self.assertEqual(op2.motion_type, 'affine')
+
+    def test_serialization_with_initial_transform(self):
+        '''initial_transform round-trips through serialization.'''
+        transform = [[1, 0, 5], [0, 1, -3], [0, 0, 1]]
+        op = v2v.AutoAlign(
+            bands=[[0], [0]], initial_transform=transform
+        )
+        op_dict = json.loads(json.dumps(op._to_json()))
+        op_class = v2v.OPERATOR_REGISTRY.get(
+            op_dict.pop('class')
+        )
+        op2 = op_class(**op_dict)
+        self.assertIsNotNone(op2.initial_transform)
+        expected = np.array(transform)
+        self.assertTrue(
+            (np.abs(op2.initial_transform - expected) < 1e-6).all()
+        )
+
+    def test_serialization_with_none_initial_transform(self):
+        '''None initial_transform round-trips correctly.'''
+        op = v2v.AutoAlign(bands=[[0], [0]])
+        op_dict = json.loads(json.dumps(op._to_json()))
+        op_class = v2v.OPERATOR_REGISTRY.get(
+            op_dict.pop('class')
+        )
+        op2 = op_class(**op_dict)
+        self.assertIsNone(op2.initial_transform)
+
+
 class AutoLinearize(unittest.TestCase):
     def _build_image(self, a: int, b: int, c: int, d: int):
         image = np.full((500, 500, 1), 255, dtype=np.float32)

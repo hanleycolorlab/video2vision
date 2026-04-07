@@ -1,5 +1,6 @@
 from math import isclose
 import os
+import tempfile
 import unittest
 
 import numpy as np
@@ -317,6 +318,98 @@ class UtilitiesTests(unittest.TestCase):
         wavelengths, response = v2v.utils.read_jazirrad_file(path)
         self.assertTrue(abs(wavelengths[10] - 194.718307) < 1e-3)
         self.assertTrue(abs(response[10] - 0.) < 1e-3)
+
+
+class LoadCsvTest(unittest.TestCase):
+    def _write_csv(self, path, header, rows):
+        '''Helper to write a CSV file.'''
+        with open(path, 'w') as f:
+            f.write(header + '\n')
+            for row in rows:
+                f.write(','.join(str(v) for v in row) + '\n')
+
+    def test_basic_load(self):
+        '''Loads a simple CSV with header row skipped.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'a,b,c', [
+                [0.1, 0.2, 0.3],
+                [0.4, 0.5, 0.6],
+            ])
+            data = v2v.utils.load_csv(path)
+            self.assertEqual(data.shape, (2, 3))
+            expected = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]])
+            self.assertTrue(
+                (np.abs(data - expected) < 1e-6).all()
+            )
+
+    def test_skip_wavelength(self):
+        '''Skips the first column when skip_wavelength=True.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'wl,a,b', [
+                [300, 0.1, 0.2],
+                [400, 0.3, 0.4],
+            ])
+            data = v2v.utils.load_csv(path, skip_wavelength=True)
+            self.assertEqual(data.shape, (2, 2))
+            expected = np.array([[0.1, 0.2], [0.3, 0.4]])
+            self.assertTrue((np.abs(data - expected) < 1e-6).all())
+
+    def test_percentage_conversion(self):
+        '''Converts from percentage (>2) to decimal.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'a,b', [
+                [50, 100],
+                [25, 75],
+            ])
+            data = v2v.utils.load_csv(path)
+            expected = np.array([[0.50, 1.00], [0.25, 0.75]])
+            self.assertTrue((np.abs(data - expected) < 1e-6).all())
+
+    def test_no_percentage_conversion_for_small_values(self):
+        '''Does not convert when max value <= 2.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'a,b', [
+                [0.5, 1.0],
+                [0.25, 0.75],
+            ])
+            data = v2v.utils.load_csv(path)
+            expected = np.array([[0.5, 1.0], [0.25, 0.75]])
+            self.assertTrue((np.abs(data - expected) < 1e-6).all())
+
+    def test_normalize(self):
+        '''Normalizes columns to sum to 1.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'a,b', [
+                [0.3, 0.6],
+                [0.7, 0.4],
+            ])
+            data = v2v.utils.load_csv(path, normalize=True)
+            col_sums = data.sum(axis=0)
+            self.assertTrue(
+                (np.abs(col_sums - 1.0) < 1e-6).all()
+            )
+
+    def test_skip_wavelength_and_normalize(self):
+        '''Combined skip_wavelength + normalize.'''
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'test.csv')
+            self._write_csv(path, 'wl,a,b', [
+                [300, 0.3, 0.6],
+                [400, 0.7, 0.4],
+            ])
+            data = v2v.utils.load_csv(
+                path, skip_wavelength=True, normalize=True
+            )
+            self.assertEqual(data.shape, (2, 2))
+            col_sums = data.sum(axis=0)
+            self.assertTrue(
+                (np.abs(col_sums - 1.0) < 1e-6).all()
+            )
 
 
 if __name__ == '__main__':

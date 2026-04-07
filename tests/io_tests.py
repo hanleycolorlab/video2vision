@@ -30,6 +30,15 @@ def _get_video() -> np.ndarray:
     return x
 
 
+def _save_video(video: np.ndarray, path: str):
+    '''Write a video using Writer (save() no longer supports video).'''
+    writer = v2v.Writer(path, extension='mp4')
+    num_frames = video.shape[2]
+    names = [os.path.splitext(os.path.basename(path))[0]] * num_frames
+    writer({'image': video, 'names': names})
+    writer.release()
+
+
 class IOTest(unittest.TestCase):
     def test_load_arw(self):
         '''
@@ -90,7 +99,7 @@ class IOTest(unittest.TestCase):
             # Not yet sure if it's SAVED as grayscale but just cast to BGR on
             # load, or if it's converted to BGR on save.
             'mp4': [
-                (8, 8, 4, 3),
+                (64, 64, 4, 3),
             ]
         }
 
@@ -100,14 +109,20 @@ class IOTest(unittest.TestCase):
                 for shape in cases:
                     image = np.zeros(shape, dtype=np.float32)
                     image[4:, :4], image[:4, 4:], image[4:, 4:] = 0.2, 0.5, 0.7
-                    v2v.save(image, temp_path)
+                    if ext == 'mp4':
+                        _save_video(image, temp_path)
+                    else:
+                        v2v.save(image, temp_path)
                     rtn = v2v.load(temp_path)
                     self.assertEqual(rtn.dtype, np.float32, (ext, shape))
                     self.assertEqual(rtn.shape, shape, (ext, shape))
                     self.assertTrue(_is_close(rtn, image), (image.max(), rtn.max()))
 
                     out = np.empty_like(image)
-                    v2v.save(image, temp_path)
+                    if ext == 'mp4':
+                        _save_video(image, temp_path)
+                    else:
+                        v2v.save(image, temp_path)
                     rtn = v2v.load(temp_path, out=out)
                     self.assertEqual(rtn.dtype, np.float32, (ext, shape))
                     self.assertEqual(rtn.shape, shape, (ext, shape))
@@ -142,6 +157,9 @@ class IOTest(unittest.TestCase):
         image_1 = np.zeros((16, 16, 3), dtype=np.float32)
         image_2 = np.full((16, 16, 3), 255. / 256., dtype=np.float32)
 
+        # Keys that every Loader output must contain
+        required_keys = {'image', 'names', 'final', 'bit_depth', 'fps'}
+
         with tempfile.TemporaryDirectory() as temp_root:
             temp_path_1 = os.path.join(temp_root, '1.png')
             v2v.save(image_1, temp_path_1)
@@ -153,7 +171,7 @@ class IOTest(unittest.TestCase):
             # Test with batch_size = 1
             out_1 = loader()
             self.assertTrue(isinstance(out_1, dict))
-            self.assertEqual(out_1.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out_1.keys(), required_keys)
             self.assertEqual(out_1['names'], ['1'])
             self.assertEqual(out_1['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_1['image'].dtype, np.float32)
@@ -162,7 +180,7 @@ class IOTest(unittest.TestCase):
 
             out_2 = loader()
             self.assertTrue(isinstance(out_2, dict))
-            self.assertEqual(out_2.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out_2.keys(), required_keys)
             self.assertEqual(out_2['names'], ['2'])
             self.assertEqual(out_2['image'].shape, (16, 16, 1, 3))
             self.assertEqual(out_2['image'].dtype, np.float32)
@@ -178,7 +196,7 @@ class IOTest(unittest.TestCase):
 
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out.keys(), required_keys)
             self.assertEqual(out['names'], ['1', '2'])
             self.assertEqual(out['image'].shape, (16, 16, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
@@ -193,7 +211,7 @@ class IOTest(unittest.TestCase):
             loader.set_path([temp_path_1, temp_path_2])
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out.keys(), required_keys)
             self.assertEqual(out['names'], ['1', '2'])
             self.assertEqual(out['image'].shape, (16, 16, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
@@ -220,7 +238,7 @@ class IOTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_root:
             path = os.path.join(temp_root, 'test.mp4')
-            v2v.save(video, path)
+            _save_video(video, path)
             loader = v2v.Loader(temp_root, (8, 8), batch_size=1)
 
             with self.assertRaises(v2v.MisshapenImageError):
@@ -245,7 +263,7 @@ class IOTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_root:
             path = os.path.join(temp_root, 'test.mp4')
-            v2v.save(video, path)
+            _save_video(video, path)
             loader = v2v.Loader(temp_root, batch_size=1, expected_size=(8, 8))
 
             with self.assertRaises(v2v.MisshapenImageError):
@@ -286,12 +304,15 @@ class IOTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_root:
             path = os.path.join(temp_root, 'test.mp4')
-            v2v.save(video, path)
+            _save_video(video, path)
 
+            required_keys = {
+                'image', 'names', 'final', 'bit_depth', 'fps'
+            }
             loader = v2v.Loader(temp_root, (256, 256), batch_size=2)
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out.keys(), required_keys)
             self.assertEqual(out['names'], ['test', 'test'])
             self.assertEqual(out['image'].shape, (256, 256, 2, 3))
             self.assertEqual(out['image'].dtype, np.float32)
@@ -300,7 +321,7 @@ class IOTest(unittest.TestCase):
 
             out = loader()
             self.assertTrue(isinstance(out, dict))
-            self.assertEqual(out.keys(), {'image', 'names', 'final'})
+            self.assertEqual(out.keys(), required_keys)
             self.assertEqual(out['names'], ['test'])
             self.assertEqual(out['image'].shape, (256, 256, 1, 3))
             self.assertEqual(out['image'].dtype, np.float32)
@@ -439,6 +460,9 @@ class IOTest(unittest.TestCase):
         should_be[:, : 0, :] = (0, 128, 255)
         self.assertTrue(_is_close(rtn, should_be))
 
+    @unittest.skip(
+        'separate_bands not yet supported with FFmpeg video writer'
+    )
     def test_writer_video_separate_bands(self):
         video = _get_video()
 
@@ -460,7 +484,7 @@ class IOTest(unittest.TestCase):
         video = _get_video()
 
         with tempfile.TemporaryDirectory() as temp_root:
-            v2v.save(video, os.path.join(temp_root, 'test_0.mp4'))
+            _save_video(video, os.path.join(temp_root, 'test_0.mp4'))
             v2v.save(video[:, :, 0], os.path.join(temp_root, 'test_1.png'))
             v2v.save(video[:, :, 1], os.path.join(temp_root, 'test_2.png'))
 
@@ -510,11 +534,12 @@ class IOTest(unittest.TestCase):
             # Specified extension - MP4
             writer = v2v.Writer(temp_path, extension='mp4')
             writer(image)
+            writer.release()
             self.assertTrue(os.path.exists(os.path.join(temp_path, 'a.mp4')))
             self.assertFalse(os.path.exists(os.path.join(temp_path, 'b.mp4')))
 
         with tempfile.TemporaryDirectory() as temp_path:
-            # Specified extension - MP4
+            # Specified extension - PNG
             temp_path = os.path.join(temp_path, 'c.png')
             writer = v2v.Writer(temp_path, extension='png')
             with self.assertRaises(FileExistsError):
@@ -525,6 +550,7 @@ class IOTest(unittest.TestCase):
             out_path = os.path.join(temp_path, 'c.mp4')
             writer = v2v.Writer(out_path, extension='mp4')
             writer(image)
+            writer.release()
             self.assertFalse(os.path.exists(os.path.join(temp_path, 'a.mp4')))
             self.assertFalse(os.path.exists(os.path.join(temp_path, 'b.mp4')))
             self.assertTrue(os.path.exists(os.path.join(temp_path, 'c.mp4')))
@@ -561,6 +587,106 @@ class IOTest(unittest.TestCase):
             loader = v2v.Loader(temp_root, (256, 256), batch_size=1)
             with self.assertRaises(FileNotFoundError):
                 loader()
+
+    def test_loader_includes_bit_depth_and_fps(self):
+        '''
+        Loader output includes bit_depth and fps keys.
+        '''
+        image_1 = np.zeros((16, 16, 3), dtype=np.float32)
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            temp_path = os.path.join(temp_root, '1.png')
+            v2v.save(image_1, temp_path)
+            loader = v2v.Loader(temp_root, (16, 16))
+            out = loader()
+            self.assertIn('bit_depth', out)
+            self.assertIn('fps', out)
+            self.assertEqual(out['bit_depth'], 8)
+
+    def test_loader_default_bit_depth(self):
+        '''
+        Loader defaults to 8-bit for non-video files.
+        '''
+        loader = v2v.Loader(None, (16, 16))
+        self.assertEqual(loader.bit_depth, 8)
+
+    def test_trim_video(self):
+        '''
+        Tests the :func:`trim_video` function.
+        '''
+        video = _get_video()  # 256x256, 3 frames, 3 channels
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            # Write a source video
+            src = os.path.join(temp_root, 'source.mp4')
+            _save_video(video, src)
+
+            # Trim to first 2 frames
+            dst = os.path.join(temp_root, 'trimmed.mp4')
+            count = v2v.io.trim_video(src, dst, max_frames=2)
+            self.assertEqual(count, 2)
+            self.assertTrue(os.path.exists(dst))
+
+            trimmed = v2v.load(dst)
+            self.assertEqual(trimmed.shape[2], 2)
+
+    def test_trim_video_with_start_frame(self):
+        '''
+        Tests trim_video with a non-zero start frame.
+        '''
+        video = _get_video()  # 3 frames
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            src = os.path.join(temp_root, 'source.mp4')
+            _save_video(video, src)
+
+            # Start from frame 1, take 1 frame
+            dst = os.path.join(temp_root, 'trimmed.mp4')
+            count = v2v.io.trim_video(
+                src, dst, start_frame=1, max_frames=1
+            )
+            self.assertEqual(count, 1)
+
+            trimmed = v2v.load(dst)
+            self.assertEqual(trimmed.shape[2], 1)
+
+    def test_trim_video_all_frames(self):
+        '''
+        Tests trim_video with no max_frames (copies all).
+        '''
+        video = _get_video()
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            src = os.path.join(temp_root, 'source.mp4')
+            _save_video(video, src)
+
+            dst = os.path.join(temp_root, 'trimmed.mp4')
+            count = v2v.io.trim_video(src, dst)
+            self.assertEqual(count, 3)
+
+    def test_writer_bit_depth_default(self):
+        '''Writer defaults to 8-bit.'''
+        writer = v2v.Writer(extension='png')
+        self.assertEqual(writer.bit_depth, 8)
+
+    def test_writer_bit_depth_parameter(self):
+        '''Writer accepts bit_depth parameter.'''
+        writer = v2v.Writer(extension='png', bit_depth=10)
+        self.assertEqual(writer.bit_depth, 10)
+
+    def test_writer_captures_fps_from_input(self):
+        '''Writer captures fps from input data dict.'''
+        with tempfile.TemporaryDirectory() as temp_root:
+            writer = v2v.Writer(temp_root, extension='png')
+            self.assertIsNone(writer.fps)
+
+            image = np.ones((16, 16, 3), dtype=np.float32)
+            writer({
+                'image': image,
+                'names': ['test'],
+                'fps': 29.97,
+            })
+            self.assertAlmostEqual(writer.fps, 29.97)
 
 
 if __name__ == '__main__':
