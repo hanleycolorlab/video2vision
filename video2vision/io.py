@@ -1,7 +1,10 @@
 from contextlib import contextmanager
 from glob import glob
+import json
 import os
 from statistics import mean
+import subprocess
+import tempfile
 from typing import Dict, Iterator, List, Optional, Tuple, Union
 
 import cv2
@@ -26,9 +29,7 @@ __all__ = [
     'load', 'Loader', 'MisshapenImageError', 'OutOfInputs', 'save', 'Writer'
 ]
 
-# Default video codec
-_VIDEO_CODEC = cv2.VideoWriter_fourcc(*'mp4v')
-
+# Default video frame rate (used by FFmpeg)
 _VIDEO_FPS = 23.976023976023978
 
 # This is a global variable used to track whether the Loader/Writer should
@@ -36,8 +37,8 @@ _VIDEO_FPS = 23.976023976023978
 # to apply a Pipeline to images in memory instead of running the normal way.
 _READ_WRITE_FROM_TO_BUFFER = False
 
-_IMAGE_EXTENSIONS = [
-    'arw', 'jpeg', 'jpg', 'mp4', 'nef', 'png', 'raw', 'tif', 'tiff'
+_SUPPORTED_EXTENSIONS = [
+    'arw', 'jpeg', 'jpg', 'mov', 'mp4', 'nef', 'png', 'raw', 'tif', 'tiff'
 ]
 
 
@@ -161,23 +162,12 @@ def save(image: np.ndarray, path: str):
     # Rescale from [0, 1] -> [0, 256]
     image = 256 * image
 
-    if path.lower().endswith('.mp4') and image.ndim == 4:
-        # MP4 only likes uint8
-        image = np.clip(image, 0, 255).astype(np.uint8)
-        # Arguments are path, codec, frame rate, size, is_color
-        writer = cv2.VideoWriter(
-            path,
-            _VIDEO_CODEC,
-            _VIDEO_FPS,
-            image.shape[:2][::-1],
-            (image.shape[-1] > 1),
+    if image.ndim == 4:
+        # Use Writer class for video output instead
+        raise NotImplementedError(
+            'Video writing not supported in save() function. '
+            'Use Writer class instead.'
         )
-        for t in range(image.shape[2]):
-            writer.write(image[:, :, t, :])
-        writer.release()
-
-    elif image.ndim == 4:
-        raise NotImplementedError('Video is supported only for mp4')
 
     elif path.lower().endswith(('.tif', '.tiff')):
         if not has_tiff:
@@ -199,6 +189,52 @@ def save(image: np.ndarray, path: str):
     else:
         image = np.clip(image, 0, 255).astype(np.uint8)
         return cv2.imwrite(path, image)
+
+
+def _detect_video_properties(path: str) -> tuple:
+    '''
+    Detect bit depth and frame rate of a video file using ffprobe.
+
+    Args:
+        path (str): Path to video file
+
+    Returns:
+        tuple: (bit_depth, fps) - defaults to (8, 23.976) if detection fails
+    '''
+    bit_depth = 8
+    fps = 23.976023976023978
+
+    try:
+        cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=pix_fmt,r_frame_rate',
+            '-of', 'json',
+            path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            stream = data['streams'][0]
+
+            # Detect bit depth from pixel format
+            pix_fmt = stream.get('pix_fmt', '')
+            if '10' in pix_fmt or 'p010' in pix_fmt:
+                bit_depth = 10
+            elif '12' in pix_fmt:
+                bit_depth = 12
+            elif '16' in pix_fmt:
+                bit_depth = 16
+
+            # Detect frame rate
+            r_frame_rate = stream.get('r_frame_rate', '')
+            if r_frame_rate and '/' in r_frame_rate:
+                num, denom = r_frame_rate.split('/')
+                fps = float(num) / float(denom)
+    except Exception:
+        pass
+
+    return bit_depth, fps
 
 
 @OPERATOR_REGISTRY.register
@@ -237,10 +273,17 @@ class Loader(Operator):
         self.batch_size = batch_size
         self.expected_size = expected_size
         self.num_channels = num_channels
+        self.bit_depth = 8  # Default to 8-bit
+        self.fps = _VIDEO_FPS  # Default FPS
         # This is used to provide external inputs from memory to a pipeline,
         # instead of loading from disk. It is only consulted if the global
         # variable _READ_WRITE_FROM_BUFFER is true.
         self.buff: Optional[np.ndarray] = None
+
+        # Auto-detect bit depth and FPS for video files
+        if path and isinstance(path, str):
+            if path.lower().endswith(('.mp4', '.mov')):
+                self.bit_depth, self.fps = _detect_video_properties(path)
 
     def __iter__(self) -> Iterator[Tuple[np.ndarray, Optional[str]]]:
         # If _READ_WRITE_FROM_BUFFER, we are providing inputs from memory, not
@@ -336,11 +379,15 @@ class Loader(Operator):
         self.buff = self.buff[:(n if (n > 0) else self.batch_size), :, :, :]
 
         # final tracks whether this is the last batch to process
-        return {
+        result = {
             'image': np.moveaxis(self.buff, 0, 2),
             'names': names,
             'final': (self.t >= len(self)),
+            'bit_depth': self.bit_depth,  # Always include bit depth
+            'fps': self.fps,  # Always include FPS
         }
+
+        return result
 
     def get_frame(self, t: int, for_display: bool = False) -> np.ndarray:
         '''
@@ -443,7 +490,11 @@ class Writer(Operator):
 
     def __init__(self, path: Optional[str] = None,
                  extension: Optional[str] = None,
-                 separate_bands: bool = False, suffix: str = ''):
+                 separate_bands: bool = False, suffix: str = '',
+                 bit_depth: Optional[int] = None,
+                 codec: str = 'auto',
+                 audio_source: Optional[str] = None,
+                 include_audio: bool = True):
         '''
         Args:
             path (str): Path to the directory to write images to.
@@ -456,12 +507,26 @@ class Writer(Operator):
 
             suffix (str): Append this to the end of output file names. This is
             only used if the output path is a directory, not an MP4.
+
+            bit_depth (optional, int): Output bit depth (8, 10, 12, or 16).
+            If None, uses 8-bit. For >8-bit, uses FFmpeg subprocess.
+
+            codec (str): Video codec for high bit depth output.
+            Options: 'auto', 'prores', 'hevc', 'h264'.
+            'auto' selects prores for .mov, hevc for .mp4.
+
+            audio_source (optional, str): Path to video file to extract audio
+            from. If None and include_audio is True, no audio will be added.
+            Typically this should be the VIS camera video path.
+
+            include_audio (bool): Whether to include audio in video output.
+            Defaults to True. Only applies to video formats (mp4, mov).
         '''
         if extension is None:
             # Check for extension in path
             _, extension = os.path.splitext(path or '')
             extension = extension[1:].lower()
-            if extension not in _IMAGE_EXTENSIONS:
+            if extension not in _SUPPORTED_EXTENSIONS:
                 extension = 'tif'
         if extension.lower() in {'arw', 'raw'}:
             raise NotImplementedError('Writer does not support RAW format')
@@ -476,10 +541,27 @@ class Writer(Operator):
         # _READ_WRITE_FROM_BUFFER is true.
         self.buff = []
 
+        # High bit depth support
+        self.bit_depth = bit_depth or 8
+        self.codec = codec
+        self.fps = None  # Will be set from input data
+        self._ffmpeg_process = None
+        self._ffmpeg_stderr = None
+        self._frame_count = 0
+
+        # Audio support
+        self.audio_source = audio_source
+        self.include_audio = include_audio
+        self._audio_temp_file = None
+
     def apply(self, x: Dict):
         image = x['image']
         num_frames = 1 if (image.ndim == 3) else image.shape[2]
         names = x.get('names', [None] * num_frames)
+
+        # Capture FPS from input data if not already set
+        if self.fps is None and 'fps' in x:
+            self.fps = x['fps']
 
         if num_frames != len(names):
             raise RuntimeError(
@@ -503,6 +585,97 @@ class Writer(Operator):
             'separate_bands': self.separate_bands,
         }
 
+    def _setup_ffmpeg_writer(self, width: int, height: int, path: str):
+        '''Setup FFmpeg subprocess for video writing with optional audio.'''
+        # Determine codec
+        if self.codec == 'auto':
+            if self.extension == 'mov':
+                self.codec = 'prores'
+            else:
+                self.codec = 'hevc'
+
+        # Use detected FPS or fallback to default
+        fps = self.fps if self.fps is not None else _VIDEO_FPS
+
+        print(f"Using {self.bit_depth}-bit {self.codec} encoder")
+        print(f"  Output: {path}")
+        print(f"  Dimensions: {width}x{height}")
+        print(f"  FPS: {fps:.3f}")
+
+        # Check if audio source exists
+        has_audio = (
+            self.include_audio and
+            self.audio_source is not None and
+            os.path.exists(self.audio_source)
+        )
+
+        if has_audio:
+            print(f"  Audio: {os.path.basename(self.audio_source)}")
+
+        # Configure codec-specific parameters
+        if self.codec == 'prores':
+            pix_fmt = 'yuv422p10le' if self.bit_depth >= 10 else 'yuv422p'
+            codec_params = ['-c:v', 'prores_ks', '-profile:v', '3']
+        elif self.codec == 'hevc':
+            pix_fmt = 'yuv420p10le' if self.bit_depth >= 10 else 'yuv420p'
+            codec_params = ['-c:v', 'libx265', '-crf', '18',
+                           '-preset', 'slow', '-x265-params', 'profile=main10']
+        else:  # h264
+            pix_fmt = 'yuv420p'
+            codec_params = ['-c:v', 'libx264', '-crf', '18']
+
+        # FFmpeg expects BGR format from OpenCV/numpy
+        input_pix_fmt = 'bgr48le' if self.bit_depth > 8 else 'bgr24'
+
+        # Build FFmpeg command
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{width}x{height}',
+            '-pix_fmt', input_pix_fmt,
+            '-r', str(fps),
+            '-i', '-',  # Video from stdin
+        ]
+
+        # Add audio input if available
+        if has_audio:
+            ffmpeg_cmd.extend(['-i', self.audio_source])
+
+        # Add video codec parameters
+        ffmpeg_cmd.extend(codec_params)
+        ffmpeg_cmd.extend(['-pix_fmt', pix_fmt])
+
+        # Add audio codec parameters
+        if has_audio:
+            ffmpeg_cmd.extend([
+                '-c:a', 'aac',      # Encode audio as AAC
+                '-map', '0:v:0',    # Map video from first input (stdin)
+                '-map', '1:a:0?',   # Map audio from second input (optional)
+                '-shortest'         # Match shortest stream duration
+            ])
+        else:
+            ffmpeg_cmd.append('-an')  # No audio
+
+        # Output path
+        ffmpeg_cmd.append(path)
+
+        # Start FFmpeg process
+        self._ffmpeg_stderr = tempfile.NamedTemporaryFile(
+            mode='w+', prefix='ffmpeg_', suffix='.log', delete=False
+        )
+        print(f"  FFmpeg log: {self._ffmpeg_stderr.name}")
+
+        self._ffmpeg_process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=self._ffmpeg_stderr
+        )
+
+        if self._ffmpeg_process.poll() is not None:
+            raise RuntimeError("FFmpeg process failed to start")
+
     def _write(self, image: np.ndarray, name: str):
         '''
         This is a convenience wrapper for writing images to disk.
@@ -517,32 +690,33 @@ class Writer(Operator):
             name = f'{name}{self.suffix}.{self.extension}'
             path = os.path.join(self.path, name)
 
-        # TODO: This should be handled better.
-        if self.extension.lower() == 'mp4':
-            # Rescale to [0, 256], and MP4 only likes uint8
-            image = np.clip(256 * image, 0, 255).astype(np.uint8)
+        # Use FFmpeg for all video files (consistent approach)
+        is_video = self.extension.lower() in ['mp4', 'mov']
 
-            if self.separate_bands:
-                if self._writer is None:
-                    paths = _get_band_paths(path, image.shape[2])
-                    if any(os.path.exists(p) for p in paths):
-                        raise FileExistsError(paths)
-                    self._writer = [
-                        _get_writer(p, image[..., 0:1]) for p in paths
-                    ]
-                if len(self._writer) != image.shape[2]:
-                    raise RuntimeError(
-                        f'Mismatch in number of bands: {len(self._writer)} '
-                        f'vs {image.shape[2]}'
-                    )
-                for b, writer in enumerate(self._writer):
-                    writer.write(image[..., b])
+        if is_video:
+            # All video output uses FFmpeg subprocess
+            if self._ffmpeg_process is None:
+                h, w = image.shape[:2]
+                self._setup_ffmpeg_writer(w, h, path)
+
+            # Scale image to appropriate bit depth
+            if self.bit_depth > 8:
+                frame_data = (image * 65535).astype(np.uint16)
             else:
-                if self._writer is None:
-                    self._writer = [_get_writer(path, image)]
-                self._writer[0].write(image)
+                frame_data = (image * 255).astype(np.uint8)
+
+            # Write frame
+            try:
+                self._ffmpeg_process.stdin.write(frame_data.tobytes())
+                self._ffmpeg_process.stdin.flush()
+                self._frame_count += 1
+                if self._frame_count % 100 == 0:
+                    print(f"  Wrote {self._frame_count} frames...")
+            except BrokenPipeError:
+                raise RuntimeError("FFmpeg process died unexpectedly")
 
         else:
+            # Non-video files (images)
             # save handles rescaling for us
             if self.separate_bands:
                 paths = _get_band_paths(path, image.shape[2])
@@ -561,6 +735,27 @@ class Writer(Operator):
         if you're writing individual frames at a time, but is necessary when
         writing video.
         '''
+        # Release FFmpeg process if active
+        if self._ffmpeg_process is not None:
+            try:
+                self._ffmpeg_process.stdin.close()
+                self._ffmpeg_process.wait(timeout=30)
+                if self._frame_count > 0:
+                    audio_msg = " (with audio)" if (
+                        self.include_audio and
+                        self.audio_source is not None and
+                        os.path.exists(self.audio_source)
+                    ) else ""
+                    print(f"  Completed: {self._frame_count} frames{audio_msg}")
+            except subprocess.TimeoutExpired:
+                self._ffmpeg_process.kill()
+                print("  Warning: FFmpeg process timed out")
+            finally:
+                if self._ffmpeg_stderr is not None:
+                    self._ffmpeg_stderr.close()
+                self._ffmpeg_process = None
+
+        # Release OpenCV writers
         if self._writer is not None:
             for writer in self._writer:
                 writer.release()
@@ -574,6 +769,8 @@ class Writer(Operator):
         # only receive HoldTokens prior to reset being called, but that cannot
         # be guaranteed.
         self._writer = None
+        self._ffmpeg_process = None
+        self._frame_count = 0
 
     def set_path(self, path: Optional[str]):
         '''
@@ -620,19 +817,6 @@ def _get_num_frames(r: Optional[cv2.VideoCapture]) -> int:
         return 1
     else:
         return r.get(cv2.CAP_PROP_FRAME_COUNT)
-
-
-def _get_writer(path: str, image: np.ndarray) -> cv2.VideoWriter:
-    '''
-    Convenience function for building an MP4 writer.
-    '''
-    return cv2.VideoWriter(
-        path,
-        _VIDEO_CODEC,
-        _VIDEO_FPS,
-        image.shape[:2][::-1],
-        (image.shape[-1] > 1),
-    )
 
 
 _LUT = np.arange(0, 256, dtype=np.float32) / 256.

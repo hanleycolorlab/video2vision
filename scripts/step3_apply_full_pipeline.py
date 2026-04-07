@@ -376,105 +376,6 @@ def find_video_pair(sample_dir):
     return str(vis_videos[0]), str(uv_videos[0])
 
 
-def copy_audio_to_video(
-    source_video, target_video, output_video=None,
-    audio_offset_frames=0, source_fps=None
-):
-    """Copy audio from source to target using ffmpeg
-
-    Args:
-        source_video: Path to video with audio
-        target_video: Path to video without audio
-            (will be replaced if output_video is None)
-        output_video: Optional output path
-            (if None, replaces target_video)
-        audio_offset_frames: Number of frames to offset audio
-            (positive = delay audio, negative = advance audio)
-        source_fps: FPS of source video
-            (required if audio_offset_frames != 0)
-
-    Returns:
-        True if successful, False otherwise
-    """
-    import subprocess
-    import shutil
-
-    if output_video is None:
-        # Create temp file and replace original
-        output_video = str(target_video) + ".tmp.mp4"
-        replace_original = True
-    else:
-        replace_original = False
-
-    try:
-        # Build ffmpeg command
-        cmd = [
-            "ffmpeg",
-            "-i", str(target_video),  # Video source (no audio)
-            "-i", str(source_video),  # Audio source
-            "-c:v", "copy",           # Copy video (no re-encode)
-            "-c:a", "aac",            # Encode audio as AAC
-            "-map", "0:v:0",          # Take video from input 1
-            # Take audio from input 2 (? makes it optional)
-            "-map", "1:a:0?",
-        ]
-
-        # Apply temporal offset if needed
-        if audio_offset_frames != 0:
-            if source_fps is None:
-                msg = "source_fps required when audio_offset_frames != 0"
-                raise ValueError(msg)
-
-            # Convert frame offset to seconds
-            offset_seconds = audio_offset_frames / source_fps
-
-            if offset_seconds > 0:
-                # Positive offset: delay audio (add silence at start)
-                delay_ms = int(offset_seconds * 1000)
-                cmd.extend(["-a", f"adelay={delay_ms}|{delay_ms}"])
-            else:
-                # Negative offset: advance audio (skip audio from start)
-                # Note: we need to insert this BEFORE the audio input
-                cmd.insert(3, "-ss")
-                cmd.insert(4, str(abs(offset_seconds)))
-
-        cmd.extend([
-            "-shortest",              # Match shortest stream duration
-            "-y",                     # Overwrite output
-            str(output_video)
-        ])
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300  # 5 minute timeout
-        )
-
-        if result.returncode != 0:
-            # Audio might not exist in source, which is okay
-            no_stream = "does not contain any stream" in result.stderr
-            no_such = "No such stream" in result.stderr
-            if no_stream or no_such:
-                return False
-            else:
-                print(f"    Warning: ffmpeg error: {result.stderr[:100]}")
-                return False
-
-        if replace_original:
-            # Replace original with audio-merged version
-            shutil.move(output_video, target_video)
-
-        return True
-
-    except subprocess.TimeoutExpired:
-        print("    Warning: ffmpeg timeout")
-        return False
-    except Exception as e:
-        print(f"    Warning: Could not copy audio: {e}")
-        return False
-
-
 def trim_video(
     input_path, output_path, start_frame=0, max_frames=None
 ):
@@ -525,6 +426,9 @@ def apply_alignment_only(
     aligned_uv_output_path,
     batch_size=30,
     preview_frames=None,
+    preserve_bit_depth=False,
+    output_codec="auto",
+    output_format="mp4",
 ):
     """Apply alignment transformation only (no color science)
 
@@ -593,13 +497,16 @@ def apply_alignment_only(
         )
         uv_loader_idx = pipe.add_operator(uv_loader)
     else:
+        # Use enhanced loaders for bit depth preservation if available and requested
+        # Use integrated Loader with bit depth detection if requested
+        # Loaders automatically detect bit depth
         vis_loader = io.Loader(
             vis_path, expected_size=expected_size, batch_size=batch_size
         )
-        vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader = io.Loader(
             uv_path, expected_size=expected_size, batch_size=batch_size
         )
+        vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader_idx = pipe.add_operator(uv_loader)
 
     # Apply flip to UV if needed
@@ -626,38 +533,37 @@ def apply_alignment_only(
         pipe.add_edge(current_uv_idx, warp_idx, in_slot=0)
         current_uv_idx = warp_idx
 
-    # Writer for aligned UV
-    uv_writer_idx = pipe.add_operator(io.Writer(str(aligned_uv_output_path)))
+    # Writer for aligned UV (audio from UV source)
+    uv_output = str(aligned_uv_output_path)
+    if preserve_bit_depth and output_format == "mov" and not uv_output.endswith('.mov'):
+        uv_output = uv_output.replace('.mp4', '.mov')
+
+    uv_writer = io.Writer(
+        path=uv_output,
+        bit_depth=10 if preserve_bit_depth else None,
+        codec=output_codec if preserve_bit_depth else 'auto',
+        audio_source=uv_path  # Include audio from UV camera
+    )
+    uv_writer_idx = pipe.add_operator(uv_writer)
     pipe.add_edge(current_uv_idx, uv_writer_idx, in_slot=0)
 
-    # Writer for VIS (pass-through for temporal alignment if needed)
-    vis_writer_idx = pipe.add_operator(
-        io.Writer(str(aligned_vis_output_path))
+    # Writer for VIS (audio from VIS source - the reference camera)
+    vis_output = str(aligned_vis_output_path)
+    if preserve_bit_depth and output_format == "mov" and not vis_output.endswith('.mov'):
+        vis_output = vis_output.replace('.mp4', '.mov')
+
+    vis_writer = io.Writer(
+        path=vis_output,
+        bit_depth=10 if preserve_bit_depth else None,
+        codec=output_codec if preserve_bit_depth else 'auto',
+        audio_source=vis_path  # Include audio from VIS camera (reference)
     )
+    vis_writer_idx = pipe.add_operator(vis_writer)
     pipe.add_edge(vis_loader_idx, vis_writer_idx, in_slot=0)
 
-    # Run pipeline
+    # Run pipeline (audio will be automatically included)
     pipe.set_batch_size(batch_size)
     pipe.run()
-
-    # Copy audio from original videos to aligned outputs
-    print("    Copying audio... ", end="", flush=True)
-    vis_audio_success = copy_audio_to_video(
-        vis_path, aligned_vis_output_path
-    )
-    uv_audio_success = copy_audio_to_video(
-        uv_path, aligned_uv_output_path
-    )
-
-    if vis_audio_success or uv_audio_success:
-        audio_status = []
-        if vis_audio_success:
-            audio_status.append("VIS")
-        if uv_audio_success:
-            audio_status.append("UV")
-        print(f"✓ ({', '.join(audio_status)})")
-    else:
-        print("⊘ (no audio tracks)")
 
 
 def apply_full_pipeline(
@@ -670,6 +576,9 @@ def apply_full_pipeline(
     human_output_path,
     batch_size=30,
     preview_frames=None,
+    preserve_bit_depth=False,
+    output_codec="auto",
+    output_format="mp4",
 ):
     """Apply complete pipeline
 
@@ -753,13 +662,16 @@ def apply_full_pipeline(
         )
         uv_loader_idx = pipe.add_operator(uv_loader)
     else:
+        # Use enhanced loaders for bit depth preservation if available and requested
+        # Use integrated Loader with bit depth detection if requested
+        # Loaders automatically detect bit depth
         vis_loader = io.Loader(
             vis_path, expected_size=expected_size, batch_size=batch_size
         )
-        vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader = io.Loader(
             uv_path, expected_size=expected_size, batch_size=batch_size
         )
+        vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader_idx = pipe.add_operator(uv_loader)
 
     # Apply flip to UV if needed (matches coarse warp in alignment)
@@ -814,8 +726,18 @@ def apply_full_pipeline(
     sense_idx = pipe.add_operator(sense_converter)
     pipe.add_edge(line_idx, sense_idx, in_slot=0)
 
-    # Writer for animal vision
-    animal_writer_idx = pipe.add_operator(io.Writer(str(animal_output_path)))
+    # Writer for animal vision (audio from VIS camera - the reference)
+    animal_output = str(animal_output_path)
+    if preserve_bit_depth and output_format == "mov" and not animal_output.endswith('.mov'):
+        animal_output = animal_output.replace('.mp4', '.mov')
+
+    animal_writer = io.Writer(
+        path=animal_output,
+        bit_depth=10 if preserve_bit_depth else None,
+        codec=output_codec if preserve_bit_depth else 'auto',
+        audio_source=vis_path  # VIS is reference, audio already aligned
+    )
+    animal_writer_idx = pipe.add_operator(animal_writer)
     pipe.add_edge(sense_idx, animal_writer_idx, in_slot=0)
 
     # Create human vision output (bands 1-3 from linearized data:
@@ -825,41 +747,27 @@ def apply_full_pipeline(
     human_sel_idx = pipe.add_operator(ConcatenateOnBands([[1, 2, 3]]))
     pipe.add_edge(line_idx, human_sel_idx, in_slot=0)
 
-    # Writer for human vision
-    human_writer_idx = pipe.add_operator(io.Writer(str(human_output_path)))
+    # Writer for human vision (audio from VIS camera - the reference)
+    human_output = str(human_output_path)
+    if preserve_bit_depth and output_format == "mov" and not human_output.endswith('.mov'):
+        human_output = human_output.replace('.mp4', '.mov')
+
+    human_writer = io.Writer(
+        path=human_output,
+        bit_depth=10 if preserve_bit_depth else None,
+        codec=output_codec if preserve_bit_depth else 'auto',
+        audio_source=vis_path  # VIS is reference, audio already aligned
+    )
+    human_writer_idx = pipe.add_operator(human_writer)
     pipe.add_edge(human_sel_idx, human_writer_idx, in_slot=0)
 
-    # Run pipeline - batch size matches notebook
-    # (divided by 2 for full pipeline)
+    # Run pipeline (audio will be automatically included from VIS camera)
+    # The VIS video is the reference, so its audio timing is correct for
+    # the output. The temporal_shift was applied internally by
+    # AutoTemporalAlign, so output frames are already synchronized with
+    # the VIS audio timeline.
     pipe.set_batch_size(batch_size // 2)
     pipe.run()
-
-    # Copy audio from VIS video to both outputs
-    # The VIS video is the reference, so its audio timing is
-    # correct for the output. The temporal_shift was applied
-    # internally by AutoTemporalAlign, so the output video frames
-    # are already synchronized with the VIS audio timeline
-    print("    Copying audio... ", end="", flush=True)
-
-    # Copy audio from VIS to both animal and human outputs
-    # No offset needed because the pipeline output is already
-    # aligned to VIS timeline
-    animal_audio_success = copy_audio_to_video(
-        vis_path, animal_output_path
-    )
-    human_audio_success = copy_audio_to_video(
-        vis_path, human_output_path
-    )
-
-    if animal_audio_success or human_audio_success:
-        audio_status = []
-        if animal_audio_success:
-            audio_status.append("animal")
-        if human_audio_success:
-            audio_status.append("human")
-        print(f"✓ ({', '.join(audio_status)})")
-    else:
-        print("⊘ (no audio track)")
 
 
 def generate_ghosting_image(
@@ -1394,6 +1302,21 @@ def main():
         "animal vision conversion). Produces VIS_aligned.mp4 and "
         "UV_aligned.mp4 for each sample."
     )
+    parser.add_argument(
+        "--preserve-bit-depth", action="store_true",
+        help="Preserve original video bit depth (10-bit, 12-bit, etc.) "
+        "throughout the pipeline and in output"
+    )
+    parser.add_argument(
+        "--output-codec", type=str, default="auto",
+        choices=["auto", "prores", "hevc", "h264"],
+        help="Output video codec (default: auto - prores for .mov, hevc for .mp4)"
+    )
+    parser.add_argument(
+        "--output-format", type=str, default="mp4",
+        choices=["mp4", "mov"],
+        help="Output video format (default: mp4)"
+    )
 
     args = parser.parse_args()
 
@@ -1562,9 +1485,10 @@ def main():
 
         if args.aligned_only:
             # Aligned-only mode: output VIS_aligned and UV_aligned
-            vis_name = f"{sample_id}_VIS_aligned{preview_suffix}.mp4"
+            ext = args.output_format
+            vis_name = f"{sample_id}_VIS_aligned{preview_suffix}.{ext}"
             aligned_vis_output_path = sample_output_dir / vis_name
-            uv_name = f"{sample_id}_UV_aligned{preview_suffix}.mp4"
+            uv_name = f"{sample_id}_UV_aligned{preview_suffix}.{ext}"
             aligned_uv_output_path = sample_output_dir / uv_name
 
             # Check if already exists
@@ -1593,6 +1517,9 @@ def main():
                     aligned_uv_output_path,
                     batch_size=args.batch_size,
                     preview_frames=args.preview,
+                    preserve_bit_depth=args.preserve_bit_depth,
+                    output_codec=args.output_codec,
+                    output_format=args.output_format,
                 )
                 elapsed = time.time() - start
                 print(f"✓ Done in {elapsed:.1f}s")
@@ -1610,11 +1537,12 @@ def main():
                 continue
         else:
             # Full pipeline mode: animal vision and human vision
+            ext = args.output_format
             animal_name = (
-                f"{sample_id}_animal_{animal_type}{preview_suffix}.mp4"
+                f"{sample_id}_animal_{animal_type}{preview_suffix}.{ext}"
             )
             animal_output_path = sample_output_dir / animal_name
-            human_name = f"{sample_id}_human{preview_suffix}.mp4"
+            human_name = f"{sample_id}_human{preview_suffix}.{ext}"
             human_output_path = sample_output_dir / human_name
 
             # Check if already exists
@@ -1645,6 +1573,9 @@ def main():
                     human_output_path,
                     batch_size=args.batch_size,
                     preview_frames=args.preview,
+                    preserve_bit_depth=args.preserve_bit_depth,
+                    output_codec=args.output_codec,
+                    output_format=args.output_format,
                 )
                 elapsed = time.time() - start
                 print(f"✓ Done in {elapsed:.1f}s")
