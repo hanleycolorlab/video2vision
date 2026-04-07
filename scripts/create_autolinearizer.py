@@ -52,6 +52,9 @@ def detect_aruco_markers(frame):
 class AutolinearizerBuilder:
     """Interactive tool for creating an autolinearizer"""
 
+    # Must match the sample_width used in the autolinearizer output
+    SAMPLE_WIDTH = 25
+
     def __init__(self, frame, corners, num_patches=28):
         self.frame = frame.copy()
         self.display_frame = frame.copy()
@@ -106,10 +109,16 @@ class AutolinearizerBuilder:
                 3,
             )
 
-        # Draw patches
+        # Draw patches as boxes matching the actual sample region
+        half_w = self.SAMPLE_WIDTH // 2
         for idx, (px, py) in enumerate(self.patch_positions):
             color = (0, 255, 255)  # Yellow for regular patches
-            cv2.circle(self.display_frame, (px, py), 15, color, -1)
+            cv2.rectangle(
+                self.display_frame,
+                (px - half_w, py - half_w),
+                (px + half_w, py + half_w),
+                color, 2,
+            )
             cv2.putText(
                 self.display_frame,
                 str(idx),
@@ -210,47 +219,89 @@ def main():
         help=("Output path for autolinearizer JSON "
               "(default: data/autolinearizer_custom.json)"),
     )
+    parser.add_argument(
+        "--samples-dir",
+        default="videos/samples",
+        help="Path to samples directory (default: videos/samples)",
+    )
+    parser.add_argument(
+        "--frame", type=int, default=None,
+        help=("Frame number to use (default: auto-detect by "
+              "scanning for ArUco markers)"),
+    )
 
     args = parser.parse_args()
 
     # Load calibration frame
-    sample_dir = Path("videos/samples") / args.sample
-    cal_dir = sample_dir / "calibration"
+    from video2vision.sample_config import find_video_pair
 
-    if not cal_dir.exists():
+    sample_dir = Path(args.samples_dir) / args.sample
+    vis_path, _ = find_video_pair(sample_dir, use_calibration=True)
+
+    if vis_path is None:
         print(
-            f"Error: Calibration directory not found: {cal_dir}"
+            f"Error: No VIS calibration video found for "
+            f"sample {args.sample}"
         )
         sys.exit(1)
 
-    vis_videos = (sorted(cal_dir.glob("VIS_*.MP4")) +
-                  sorted(cal_dir.glob("VIS_*.mp4")))
-    if not vis_videos:
-        print(f"Error: No VIS calibration video found in {cal_dir}")
-        sys.exit(1)
-
-    vis_path = str(vis_videos[0])
     print(f"Loading calibration frame from: {vis_path}")
 
-    # Load first frame
     cap = cv2.VideoCapture(vis_path)
-    ret, frame = cap.read()
-    cap.release()
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    print(f"Video has {total_frames} frames")
 
-    if not ret:
-        print("Error: Could not read video frame")
+    # Find a frame with ArUco markers
+    frame = None
+    corners = None
+
+    if args.frame is not None:
+        # Use the specific frame requested
+        cap.set(cv2.CAP_PROP_POS_FRAMES, args.frame)
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            print(f"Error: Could not read frame {args.frame}")
+            sys.exit(1)
+        print(f"Using frame {args.frame}")
+        corners, ids = detect_aruco_markers(frame)
+    else:
+        # Scan frames for ArUco markers (try first, middle, then
+        # every 10th frame)
+        frames_to_try = [0, total_frames // 2]
+        frames_to_try += list(range(0, total_frames, 10))
+        # Remove duplicates while preserving order
+        seen = set()
+        frames_to_try = [
+            f for f in frames_to_try
+            if f not in seen and not seen.add(f)
+        ]
+
+        for frame_idx in frames_to_try:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, candidate = cap.read()
+            if not ret:
+                continue
+            c, ids = detect_aruco_markers(candidate)
+            if c is not None and c.shape[0] == 4:
+                frame = candidate
+                corners = c
+                print(f"✓ Found ArUco markers at frame {frame_idx}")
+                break
+
+        cap.release()
+
+    if frame is None:
+        print("Error: Could not read any video frame")
         sys.exit(1)
 
     print(f"Frame loaded: {frame.shape}")
-
-    # Detect ArUco markers
-    print("Detecting ArUco markers...")
-    corners, ids = detect_aruco_markers(frame)
 
     if corners is None or corners.shape[0] != 4:
         print("Error: Could not detect all 4 ArUco markers")
         markers_found = corners.shape[0] if corners is not None else 0
         print(f"Found: {markers_found}")
+        print("Try specifying a different frame with --frame N")
         sys.exit(1)
 
     print("✓ Detected 4 ArUco markers")
@@ -284,14 +335,12 @@ def main():
     camera_csv = Path("data/camera_sensitivities.csv")
 
     if calibration_csv.exists() and camera_csv.exists():
-        # Load reflectance values (skip header row)
-        sample_ref = np.loadtxt(
-            calibration_csv, delimiter=",", skiprows=1
+        # Load reflectance values and camera sensitivities
+        sample_ref = v2v_utils.load_csv(
+            str(calibration_csv), skip_wavelength=True
         )
-        # Load camera sensitivities (skip header row)
-        camera_sense = np.loadtxt(camera_csv, delimiter=",", skiprows=1)
-        camera_sense = camera_sense / camera_sense.sum(
-            axis=0, keepdims=True
+        camera_sense = v2v_utils.load_csv(
+            str(camera_csv), normalize=True, skip_wavelength=True
         )
 
         # Calculate expected values: reflectance * camera_sensitivity

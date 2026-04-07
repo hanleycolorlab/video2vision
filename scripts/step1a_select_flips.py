@@ -15,12 +15,15 @@ Usage (from project root):
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+from video2vision.sample_config import (
+    load_sample_config, save_sample_config, find_video_pair
+)
 
 
 def load_first_frame(video_path):
@@ -125,24 +128,19 @@ def select_flip_for_sample(sample_id, sample_dir, video_type="main"):
     sample_dir = Path(sample_dir)
 
     # Find videos
-    if video_type == "calibration":
-        search_dir = sample_dir / "calibration"
+    use_cal = (video_type == "calibration")
+    if use_cal:
         label_prefix = f"{sample_id} CALIBRATION"
     else:
-        search_dir = sample_dir
         label_prefix = sample_id
 
-    vis_videos = (sorted(search_dir.glob('VIS_*.MP4')) +
-                  sorted(search_dir.glob('VIS_*.mp4')))
-    uv_videos = (sorted(search_dir.glob('UV_*.MP4')) +
-                 sorted(search_dir.glob('UV_*.mp4')))
+    vis_path, uv_path = find_video_pair(
+        sample_dir, use_calibration=use_cal
+    )
 
-    if not vis_videos or not uv_videos:
+    if vis_path is None or uv_path is None:
         print(f"⚠ {label_prefix}: No video pair found")
         return None
-
-    vis_path = str(vis_videos[0])
-    uv_path = str(uv_videos[0])
 
     print(f"\n{label_prefix}: Loading...")
 
@@ -297,12 +295,11 @@ def main():
 
         # Save config
         if main_flip is not None:
-            # Load existing config if it exists
-            config_path = sample_dir / 'config.json'
-            if config_path.exists():
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-            else:
+            # Load existing config or create new one
+            config = load_sample_config(
+                sample_id, args.samples_dir
+            )
+            if config is None:
                 config = {
                     'sample_id': sample_id,
                     'created': str(
@@ -315,35 +312,35 @@ def main():
             config['has_calibration'] = has_calibration
 
             # Find main video files
-            vis_videos = (sorted(sample_dir.glob('VIS_*.MP4')) +
-                          sorted(sample_dir.glob('VIS_*.mp4')))
-            uv_videos = (sorted(sample_dir.glob('UV_*.MP4')) +
-                         sorted(sample_dir.glob('UV_*.mp4')))
-
+            vis_path, uv_path = find_video_pair(sample_dir)
             config['main_videos'] = {
-                'vis': vis_videos[0].name if vis_videos else None,
-                'uv': uv_videos[0].name if uv_videos else None,
+                'vis': Path(vis_path).name if vis_path else None,
+                'uv': Path(uv_path).name if uv_path else None,
             }
 
             # Add calibration info if present
             if has_calibration and cal_flip is not None:
                 config['flip_calibration'] = cal_flip
 
-                cal_dir = sample_dir / 'calibration'
-                cal_vis = (sorted(cal_dir.glob('VIS_*.MP4')) +
-                           sorted(cal_dir.glob('VIS_*.mp4')))
-                cal_uv = (sorted(cal_dir.glob('UV_*.MP4')) +
-                          sorted(cal_dir.glob('UV_*.mp4')))
-
+                cal_vis, cal_uv = find_video_pair(
+                    sample_dir, use_calibration=True
+                )
                 config['calibration_videos'] = {
-                    'vis': cal_vis[0].name if cal_vis else None,
-                    'uv': cal_uv[0].name if cal_uv else None,
+                    'vis': (
+                        Path(cal_vis).name if cal_vis else None
+                    ),
+                    'uv': (
+                        Path(cal_uv).name if cal_uv else None
+                    ),
                 }
 
-            # Save to sample folder
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2)
+            save_sample_config(
+                sample_id, config, args.samples_dir
+            )
 
+            config_path = (
+                Path(args.samples_dir) / sample_id / 'config.json'
+            )
             print(f"  ✓ Saved: {config_path}")
 
             results[sample_id] = config

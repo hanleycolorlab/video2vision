@@ -6,11 +6,15 @@ Verifies that all required files and directories are in place.
 
 Usage (from project root):
     python -m scripts.check_setup
+    python -m scripts.check_setup --dir /path/to/project
 
     Or if video2vision is installed:
     python scripts/check_setup.py
+    python scripts/check_setup.py --dir /path/to/project
 """
 
+import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -20,8 +24,25 @@ def check_mark(passed):
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Check setup for batch video processing workflow"
+    )
+    parser.add_argument(
+        '--dir', default=os.getcwd(),
+        help='Root directory of the project (default: current directory)'
+    )
+    args = parser.parse_args()
+
+    root = Path(args.dir)
+    if not root.exists():
+        print(f"Error: Directory not found: {root}")
+        return 1
+
+    os.chdir(root)
+
     print("=" * 70)
     print("Video2Vision Batch Workflow Setup Check")
+    print(f"  Root: {root}")
     print("=" * 70)
 
     issues = []
@@ -43,7 +64,7 @@ def main():
     except ImportError:
         print(f"   {check_mark(False)} opencv NOT installed")
         issues.append(
-            "Run: python3 -m pip install opencv-contrib-python-headless"
+            "Run: python3 -m pip install opencv-contrib-python"
         )
 
     try:

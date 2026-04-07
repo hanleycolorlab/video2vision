@@ -19,7 +19,7 @@ python3 -m pip install -r requirements-optional.txt
 
 ### Core Dependencies
 
-- **Required**: networkx, numpy, opencv-contrib-python-headless, scipy, tdigest
+- **Required**: networkx, numpy, opencv-contrib-python, scipy, tdigest
 - **Optional**: ipyevents, matplotlib, notebook, rawpy, sphinx, tabulate, tifffile
 
 ## Testing

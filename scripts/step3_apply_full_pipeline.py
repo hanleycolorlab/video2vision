@@ -49,12 +49,14 @@ import cv2
 import numpy as np
 
 from video2vision import io, pipeline, operators, elementwise
+from video2vision.io import OutOfInputs
 from video2vision.operators import (
     HorizontalFlip, VerticalFlip, ConcatenateOnBands
 )
+from video2vision.sample_config import load_sample_config, find_video_pair
+from video2vision.utils import load_csv
 from video2vision.warp import Warp
 from video2vision.auto_operators import AutoTemporalAlign
-from video2vision.io import OutOfInputs
 
 try:
     import matplotlib
@@ -156,47 +158,6 @@ def load_pipeline_config(config_path=None):
 
     with open(config_path, "r") as f:
         return json.load(f)
-
-
-def load_sample_config(sample_id, samples_dir="videos/samples"):
-    """Load configuration for a sample"""
-    config_path = Path(samples_dir) / sample_id / "config.json"
-
-    if not config_path.exists():
-        return None
-
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-
-def load_csv(path, normalize=False, skip_wavelength=False):
-    """Load CSV file as numpy array (matches notebook's load_csv logic)
-
-    Args:
-        path: Path to CSV file
-        normalize: If True, normalize each column
-        skip_wavelength: If True, skip first column
-            (assumes it's wavelength metadata)
-    """
-    # Skip header row
-    data = np.loadtxt(path, delimiter=",", skiprows=1)
-    if skip_wavelength:
-        # Skip first column (wavelength)
-        data = data[:, 1:]
-
-    # Match notebook logic: convert from percentage if values > 2
-    if data.max() > 2:
-        data /= 100
-
-    if normalize:
-        # Normalize each column
-        summand = data.sum(0, keepdims=True)
-        if (np.abs(summand - 1) > 1e-2).any():
-            msg = f'Columns in {path} do not sum to 1:'
-            print(f'Warning: {msg} {summand.flatten()}. Normalizing.')
-        data /= summand
-
-    return data
 
 
 def build_linearizer(calibration_patches, pipeline_config):
@@ -356,68 +317,6 @@ def load_sense_converter(animal_type):
     return operators.load_operator(str(converter_path))
 
 
-def find_video_pair(sample_dir):
-    """Find VIS and UV video pair in main directory"""
-    sample_dir = Path(sample_dir)
-
-    if not sample_dir.exists():
-        return None, None
-
-    vis_videos = sorted(sample_dir.glob("VIS_*.MP4")) + sorted(
-        sample_dir.glob("VIS_*.mp4")
-    )
-    uv_videos = sorted(sample_dir.glob("UV_*.MP4")) + sorted(
-        sample_dir.glob("UV_*.mp4")
-    )
-
-    if not vis_videos or not uv_videos:
-        return None, None
-
-    return str(vis_videos[0]), str(uv_videos[0])
-
-
-def trim_video(
-    input_path, output_path, start_frame=0, max_frames=None
-):
-    """Trim video starting from a specific frame
-
-    Args:
-        input_path: Path to input video
-        output_path: Path to output video
-        start_frame: Frame to start from (default: 0)
-        max_frames: Maximum number of frames to write
-            (default: None = all)
-
-    Returns:
-        Number of frames written
-    """
-    cap = cv2.VideoCapture(str(input_path))
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-
-    size = (width, height)
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, size)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
-    frame_count = 0
-    while True:
-        if max_frames is not None and frame_count >= max_frames:
-            break
-        ret, frame = cap.read()
-        if not ret:
-            break
-        out.write(frame)
-        frame_count += 1
-
-    cap.release()
-    out.release()
-
-    return frame_count
-
-
 def apply_alignment_only(
     vis_path,
     uv_path,
@@ -497,14 +396,14 @@ def apply_alignment_only(
         )
         uv_loader_idx = pipe.add_operator(uv_loader)
     else:
-        # Use enhanced loaders for bit depth preservation if available and requested
-        # Use integrated Loader with bit depth detection if requested
         # Loaders automatically detect bit depth
         vis_loader = io.Loader(
-            vis_path, expected_size=expected_size, batch_size=batch_size
+            vis_path, expected_size=expected_size,
+            batch_size=batch_size,
         )
         uv_loader = io.Loader(
-            uv_path, expected_size=expected_size, batch_size=batch_size
+            uv_path, expected_size=expected_size,
+            batch_size=batch_size,
         )
         vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader_idx = pipe.add_operator(uv_loader)
@@ -535,7 +434,12 @@ def apply_alignment_only(
 
     # Writer for aligned UV (audio from UV source)
     uv_output = str(aligned_uv_output_path)
-    if preserve_bit_depth and output_format == "mov" and not uv_output.endswith('.mov'):
+    needs_mov = (
+        preserve_bit_depth
+        and output_format == "mov"
+        and not uv_output.endswith('.mov')
+    )
+    if needs_mov:
         uv_output = uv_output.replace('.mp4', '.mov')
 
     uv_writer = io.Writer(
@@ -549,7 +453,12 @@ def apply_alignment_only(
 
     # Writer for VIS (audio from VIS source - the reference camera)
     vis_output = str(aligned_vis_output_path)
-    if preserve_bit_depth and output_format == "mov" and not vis_output.endswith('.mov'):
+    needs_mov = (
+        preserve_bit_depth
+        and output_format == "mov"
+        and not vis_output.endswith('.mov')
+    )
+    if needs_mov:
         vis_output = vis_output.replace('.mp4', '.mov')
 
     vis_writer = io.Writer(
@@ -662,14 +571,14 @@ def apply_full_pipeline(
         )
         uv_loader_idx = pipe.add_operator(uv_loader)
     else:
-        # Use enhanced loaders for bit depth preservation if available and requested
-        # Use integrated Loader with bit depth detection if requested
         # Loaders automatically detect bit depth
         vis_loader = io.Loader(
-            vis_path, expected_size=expected_size, batch_size=batch_size
+            vis_path, expected_size=expected_size,
+            batch_size=batch_size,
         )
         uv_loader = io.Loader(
-            uv_path, expected_size=expected_size, batch_size=batch_size
+            uv_path, expected_size=expected_size,
+            batch_size=batch_size,
         )
         vis_loader_idx = pipe.add_operator(vis_loader)
         uv_loader_idx = pipe.add_operator(uv_loader)
@@ -728,7 +637,12 @@ def apply_full_pipeline(
 
     # Writer for animal vision (audio from VIS camera - the reference)
     animal_output = str(animal_output_path)
-    if preserve_bit_depth and output_format == "mov" and not animal_output.endswith('.mov'):
+    needs_mov = (
+        preserve_bit_depth
+        and output_format == "mov"
+        and not animal_output.endswith('.mov')
+    )
+    if needs_mov:
         animal_output = animal_output.replace('.mp4', '.mov')
 
     animal_writer = io.Writer(
@@ -749,7 +663,12 @@ def apply_full_pipeline(
 
     # Writer for human vision (audio from VIS camera - the reference)
     human_output = str(human_output_path)
-    if preserve_bit_depth and output_format == "mov" and not human_output.endswith('.mov'):
+    needs_mov = (
+        preserve_bit_depth
+        and output_format == "mov"
+        and not human_output.endswith('.mov')
+    )
+    if needs_mov:
         human_output = human_output.replace('.mp4', '.mov')
 
     human_writer = io.Writer(
@@ -1310,7 +1229,8 @@ def main():
     parser.add_argument(
         "--output-codec", type=str, default="auto",
         choices=["auto", "prores", "hevc", "h264"],
-        help="Output video codec (default: auto - prores for .mov, hevc for .mp4)"
+        help=("Output video codec (default: auto "
+              "- prores for .mov, hevc for .mp4)")
     )
     parser.add_argument(
         "--output-format", type=str, default="mp4",

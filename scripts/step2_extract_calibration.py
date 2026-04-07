@@ -34,6 +34,9 @@ import cv2
 import numpy as np
 
 from video2vision import utils as v2v_utils
+from video2vision.sample_config import (
+    load_sample_config, save_sample_config, find_video_pair
+)
 from video2vision.warp import Warp
 from video2vision import elementwise
 
@@ -45,39 +48,6 @@ try:
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
     print("Warning: matplotlib not available, analysis plots will be skipped")
-
-
-def load_sample_config(sample_id, samples_dir="videos/samples"):
-    """Load configuration for a sample"""
-    config_path = Path(samples_dir) / sample_id / "config.json"
-    if not config_path.exists():
-        return None
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-
-def save_sample_config(sample_id, config, samples_dir="videos/samples"):
-    """Save configuration for a sample"""
-    config_path = Path(samples_dir) / sample_id / "config.json"
-    with open(config_path, "w") as f:
-        json.dump(config, f, indent=2)
-
-
-def find_calibration_videos(sample_dir):
-    """Find VIS and UV calibration video pair"""
-    cal_dir = Path(sample_dir) / "calibration"
-    if not cal_dir.exists():
-        return None, None
-
-    vis_videos = (sorted(cal_dir.glob("VIS_*.MP4")) +
-                  sorted(cal_dir.glob("VIS_*.mp4")))
-    uv_videos = (sorted(cal_dir.glob("UV_*.MP4")) +
-                 sorted(cal_dir.glob("UV_*.mp4")))
-
-    if not vis_videos or not uv_videos:
-        return None, None
-
-    return str(vis_videos[0]), str(uv_videos[0])
 
 
 def load_and_align_frame(vis_path, uv_path, alignment_params, frame_offset=0):
@@ -455,24 +425,7 @@ def extract_patch_values(frame_float, positions, patch_size=5):
     return values
 
 
-def load_csv(path, normalize=False, skip_wavelength=False):
-    """Load CSV file as numpy array
-
-    Args:
-        path: Path to CSV file
-        normalize: If True, normalize each column
-        skip_wavelength: If True, skip first column (assumes it's
-                         wavelength metadata)
-    """
-    # Skip header row
-    data = np.loadtxt(path, delimiter=',', skiprows=1)
-    if skip_wavelength:
-        # Skip first column (wavelength)
-        data = data[:, 1:]
-    if normalize:
-        # Normalize each column
-        data = data / data.sum(axis=0, keepdims=True)
-    return data
+load_csv = v2v_utils.load_csv
 
 
 def generate_calibration_analysis(
@@ -834,7 +787,9 @@ def main():
 
         # Find calibration videos
         sample_dir = Path(samples_dir) / sample_id
-        vis_path, uv_path = find_calibration_videos(sample_dir)
+        vis_path, uv_path = find_video_pair(
+            sample_dir, use_calibration=True
+        )
 
         if vis_path is None:
             print("  ✗ Calibration videos not found")

@@ -26,7 +26,8 @@ from .operators import Operator, OPERATOR_REGISTRY
 from .utils import _coerce_to_image
 
 __all__ = [
-    'load', 'Loader', 'MisshapenImageError', 'OutOfInputs', 'save', 'Writer'
+    'load', 'Loader', 'MisshapenImageError', 'OutOfInputs', 'save',
+    'trim_video', 'Writer',
 ]
 
 # Default video frame rate (used by FFmpeg)
@@ -212,7 +213,9 @@ def _detect_video_properties(path: str) -> tuple:
             '-of', 'json',
             path
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=10
+        )
         if result.returncode == 0:
             data = json.loads(result.stdout)
             stream = data['streams'][0]
@@ -618,8 +621,11 @@ class Writer(Operator):
             codec_params = ['-c:v', 'prores_ks', '-profile:v', '3']
         elif self.codec == 'hevc':
             pix_fmt = 'yuv420p10le' if self.bit_depth >= 10 else 'yuv420p'
-            codec_params = ['-c:v', 'libx265', '-crf', '18',
-                           '-preset', 'slow', '-x265-params', 'profile=main10']
+            codec_params = [
+                '-c:v', 'libx265', '-crf', '18',
+                '-preset', 'slow',
+                '-x265-params', 'profile=main10',
+            ]
         else:  # h264
             pix_fmt = 'yuv420p'
             codec_params = ['-c:v', 'libx264', '-crf', '18']
@@ -746,7 +752,8 @@ class Writer(Operator):
                         self.audio_source is not None and
                         os.path.exists(self.audio_source)
                     ) else ""
-                    print(f"  Completed: {self._frame_count} frames{audio_msg}")
+                    msg = f"  Completed: {self._frame_count}"
+                    print(f"{msg} frames{audio_msg}")
             except subprocess.TimeoutExpired:
                 self._ffmpeg_process.kill()
                 print("  Warning: FFmpeg process timed out")
@@ -817,6 +824,47 @@ def _get_num_frames(r: Optional[cv2.VideoCapture]) -> int:
         return 1
     else:
         return r.get(cv2.CAP_PROP_FRAME_COUNT)
+
+
+def trim_video(input_path: str, output_path: str,
+               start_frame: int = 0,
+               max_frames: Optional[int] = None) -> int:
+    '''
+    Trim a video file by extracting a range of frames.
+
+    Args:
+        input_path (str): Path to the input video file.
+        output_path (str): Path to write the trimmed video.
+        start_frame (int): Frame index to start from (default: 0).
+        max_frames (optional, int): Maximum number of frames to write.
+        If None, writes all frames from start_frame to end.
+
+    Returns:
+        int: Number of frames written.
+    '''
+    cap = cv2.VideoCapture(str(input_path))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+    out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    frame_count = 0
+    while True:
+        if max_frames is not None and frame_count >= max_frames:
+            break
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+        frame_count += 1
+
+    cap.release()
+    out.release()
+    return frame_count
 
 
 _LUT = np.arange(0, 256, dtype=np.float32) / 256.

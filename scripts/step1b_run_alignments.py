@@ -81,7 +81,6 @@ Recommended workflow:
 """
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -90,68 +89,11 @@ from video2vision import io, pipeline
 from video2vision.auto_operators import (
     AutoAlign, AutoTemporalAlign, AlignmentNotFound
 )
+from video2vision.io import trim_video
 from video2vision.operators import HorizontalFlip, VerticalFlip
-
-
-def load_sample_config(sample_id, samples_dir="videos/samples"):
-    """Load configuration for a sample from its folder"""
-    config_path = Path(samples_dir) / sample_id / "config.json"
-
-    if not config_path.exists():
-        return None
-
-    with open(config_path, "r") as f:
-        return json.load(f)
-
-
-def find_video_pair(sample_dir, use_calibration=False):
-    """Find VIS and UV video pair"""
-    sample_dir = Path(sample_dir)
-
-    if use_calibration:
-        sample_dir = sample_dir / "calibration"
-
-    if not sample_dir.exists():
-        return None, None
-
-    vis_videos = sorted(sample_dir.glob("VIS_*.MP4")) + sorted(
-        sample_dir.glob("VIS_*.mp4")
-    )
-    uv_videos = sorted(sample_dir.glob("UV_*.MP4")) + sorted(
-        sample_dir.glob("UV_*.mp4")
-    )
-
-    if not vis_videos or not uv_videos:
-        return None, None
-
-    return str(vis_videos[0]), str(uv_videos[0])
-
-
-def _trim_video(input_path, output_path, max_frames):
-    """
-    Create a temporary trimmed version of a video with only the first
-    max_frames frames
-    """
-    import cv2
-
-    cap = cv2.VideoCapture(input_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-    frame_count = 0
-    while frame_count < max_frames:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        out.write(frame)
-        frame_count += 1
-
-    cap.release()
-    out.release()
+from video2vision.sample_config import (
+    load_sample_config, save_sample_config, find_video_pair
+)
 
 
 def generate_preview_from_alignment(
@@ -308,14 +250,14 @@ def run_alignment(
             # Trim VIS video
             vis_stem = Path(vis_path).stem
             temp_vis_path = temp_dir / f"temp_vis_{vis_stem}_trimmed.mp4"
-            _trim_video(vis_path, str(temp_vis_path), min_frame_count)
+            trim_video(vis_path, str(temp_vis_path), min_frame_count)
             temp_files_to_cleanup.append(temp_vis_path)
 
         if uv_frame_count > min_frame_count:
             # Trim UV video
             uv_stem = Path(uv_path).stem
             temp_uv_path = temp_dir / f"temp_uv_{uv_stem}_trimmed.mp4"
-            _trim_video(uv_path, str(temp_uv_path), min_frame_count)
+            trim_video(uv_path, str(temp_uv_path), min_frame_count)
             temp_files_to_cleanup.append(temp_uv_path)
 
     # Loaders
@@ -1090,9 +1032,7 @@ def main():
                         config["alignment_calibration"] = {"error": str(e)}
 
         # Save updated config
-        config_path = sample_dir / "config.json"
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        save_sample_config(sample_id, config, args.samples_dir)
 
         results.append((sample_id, "SUCCESS", "Aligned"))
 

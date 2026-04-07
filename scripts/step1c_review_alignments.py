@@ -26,30 +26,12 @@ Controls:
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 import cv2
 
-
-def load_sample_config(sample_id, samples_dir='videos/samples'):
-    """Load configuration for a sample"""
-    config_path = Path(samples_dir) / sample_id / 'config.json'
-
-    if not config_path.exists():
-        return None
-
-    with open(config_path, 'r') as f:
-        return json.load(f)
-
-
-def save_sample_config(sample_id, config, samples_dir='videos/samples'):
-    """Save configuration for a sample"""
-    config_path = Path(samples_dir) / sample_id / 'config.json'
-
-    with open(config_path, 'w') as f:
-        json.dump(config, f, indent=2)
+from video2vision.sample_config import load_sample_config, save_sample_config
 
 
 def find_composite_images(sample_id, video_type, samples_dir='videos/samples'):
