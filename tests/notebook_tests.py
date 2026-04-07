@@ -260,13 +260,13 @@ class DisplayTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_root:
             image = np.zeros((8, 8, 3) if rgb else (8, 8), dtype=dtype)
             image[0, 0] = 255
-            if rgb and ext == 'tif':
-                image = np.rollaxis(image, 2, 0)
 
             path_0 = os.path.join(temp_root, f'0.{ext}')
             if ext == 'tif':
                 self.assertTrue(has_tiff, 'Needs tifffile for this test')
-                tifffile.imwrite(path_0, image, photometric='minisblack')
+                tifffile.imwrite(
+                    path_0, np.moveaxis(image, -1, 0), photometric='minisblack'
+                )
             else:
                 Image.fromarray(image).save(path_0)
 
@@ -274,7 +274,9 @@ class DisplayTest(unittest.TestCase):
             path_1 = os.path.join(temp_root, f'1.{ext}')
             if ext == 'tif':
                 self.assertTrue(has_tiff, 'Needs tifffile for this test')
-                tifffile.imwrite(path_1, image, photometric='minisblack')
+                tifffile.imwrite(
+                    path_1, np.moveaxis(image, -1, 0), photometric='minisblack'
+                )
             else:
                 Image.fromarray(image).save(path_1)
 
@@ -1032,6 +1034,62 @@ class ProcessingTest(unittest.TestCase):
             self.assertEqual(len(os.listdir(config['animal_out_path'])), 1)
             self.assertEqual(len(os.listdir(config['human_out_path'])), 1)
 
+    def test_build_and_run_full_pipeline_separate_bands(self):
+        with tempfile.TemporaryDirectory() as temp_root:
+            config = v2v_nb.get_config()
+            v2v_nb.clear_all()
+
+            config['coe'], config['shift'] = np.eye(3), 0
+
+            line_op = v2v.PowerLaw([
+                [0.0047058172145495476, 4185.031519941784, -0.01,
+                 0.16736099187966763],
+                [0.0047058172145495476, 4185.031519941784, -0.01,
+                 0.16736099187966763],
+                [0.0047058172145495476, 4185.031519941784, -0.01,
+                 0.16736099187966763],
+                [0.0047058172145495476, 4185.031519941784, -0.01,
+                 0.16736099187966763],
+            ])
+
+            root = os.path.abspath(os.path.dirname(__file__))
+            config['align_pipe_path'] = os.path.join(
+                root, '../data/still_alignment_pipeline.json'
+            )
+            config['uv_path'] = os.path.join(root, 'data/uv_sample.jpg')
+            config['vis_path'] = os.path.join(root, 'data/vis_sample.jpg')
+            config['uv_aligned_path'] = os.path.join(temp_root, 'uv_aligned')
+            config['animal_out_path'] = os.path.join(temp_root, 'animal')
+            config['human_out_path'] = os.path.join(temp_root, 'human')
+            config['animal_sensitivity_path'] = os.path.join(
+                root, '../data/animal_sensitivities/avian_sensitivities.csv'
+            )
+            config['sense_converter_path'] = os.path.join(
+                root, '../data/converters/avian_converter.json'
+            )
+
+            with self.assert_prints('Pipeline complete'):
+                v2v_nb.build_and_run_full_pipeline(line_op)
+            self.assertEqual(len(os.listdir(config['animal_out_path'])), 4)
+            self.assertEqual(len(os.listdir(config['human_out_path'])), 1)
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            config['uv_aligned_path'] = os.path.join(temp_root, 'uv_aligned')
+            config['animal_out_path'] = os.path.join(temp_root, 'animal')
+            config['human_out_path'] = os.path.join(temp_root, 'human')
+
+            with open(config['align_pipe_path'], 'r') as f:
+                pipe = json.load(f)
+            config['align_pipe_path'] = os.path.join(temp_root, 'pipe.json')
+            pipe[4]['operator']['extension'] = 'tif'
+            with open(config['align_pipe_path'], 'w') as f:
+                json.dump(pipe, f)
+
+            with self.assert_prints('Pipeline complete'):
+                v2v_nb.build_and_run_full_pipeline(line_op)
+            self.assertEqual(len(os.listdir(config['animal_out_path'])), 1)
+            self.assertEqual(len(os.listdir(config['human_out_path'])), 1)
+
     def test_build_and_save_alignment_pipeline(self):
         v2v_nb.clear_all()
         config = v2v_nb.get_config()
@@ -1068,6 +1126,20 @@ class ProcessingTest(unittest.TestCase):
 
             with self.with_image(as_loader=False) as (path, _):
                 config['vis_path'] = path
+
+                config['build_video_pipeline'] = False
+                config['out_format'] = 'mp4'
+                with self.assert_prints('mp4 output format is only supported'):
+                    v2v_nb.build_and_save_alignment_pipeline(warp_op)
+                config['out_format'] = 'xyz'
+                with self.assert_prints('Output format xyz not recognized'):
+                    v2v_nb.build_and_save_alignment_pipeline(warp_op)
+                config['build_video_pipeline'] = True
+                config['out_format'] = 'tif'
+                with self.assert_prints('mp4 output format is required'):
+                    v2v_nb.build_and_save_alignment_pipeline(warp_op)
+
+                config['out_format'] = 'mp4'
                 with self.assert_prints('Done!'):
                     v2v_nb.build_and_save_alignment_pipeline(warp_op)
 

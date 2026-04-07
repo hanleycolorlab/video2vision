@@ -6,6 +6,13 @@ import numpy as np
 
 import video2vision as v2v
 
+try:
+    import tifffile
+except ImportError:
+    has_tiff = False
+else:
+    has_tiff = True
+
 
 def _is_close(x: np.ndarray, y: np.ndarray) -> bool:
     '''
@@ -374,6 +381,27 @@ class IOTest(unittest.TestCase):
 
             with self.assertRaises(FileExistsError):
                 writer({'image': image, 'names': ['00000']})
+
+    def test_writer_tiff_4_bands(self):
+        self.assertTrue(has_tiff, 'Needs tifffile for this test')
+
+        with tempfile.TemporaryDirectory() as temp_root:
+            writer = v2v.Writer(
+                temp_root, extension='tif', separate_bands=False
+            )
+
+            image = np.ones((16, 16, 4), dtype=np.float32)
+            writer({'image': image, 'names': ['00000']})
+
+            video = np.ones((16, 16, 2, 4), dtype=np.float32)
+            writer({'image': video, 'names': ['00001', '00002']})
+
+            for i in range(3):
+                temp_path = os.path.join(temp_root, f'0000{i}.tif')
+                self.assertTrue(os.path.exists(temp_path))
+                image = tifffile.imread(temp_path)
+                self.assertEqual(image.shape, (4, 16, 16))
+                self.assertTrue((image == 256).all())
 
     def test_writer_video_handling(self):
         '''
