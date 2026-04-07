@@ -95,6 +95,65 @@ Applies alignment, linearization, and animal vision conversion. Options:
 - `--preview N` -- process only first N frames
 - `--output-format mp4|mov` -- output format (default: mp4)
 
+## High Bit Depth Output
+
+Step 3 supports 10-bit (and higher) video output for preserving
+color depth from professional cameras (e.g. Sony S-Log footage).
+Requires FFmpeg installed with codec support.
+
+```bash
+# 10-bit ProRes (large, visually lossless, best for editing)
+python -m scripts.step3_apply_full_pipeline \
+    --approved-only --preserve-bit-depth \
+    --output-format mov --output-codec prores
+
+# 10-bit HEVC (smaller files, good for archiving)
+python -m scripts.step3_apply_full_pipeline \
+    --approved-only --preserve-bit-depth \
+    --output-format mp4 --output-codec hevc
+```
+
+Codec options: `auto` (default -- prores for .mov, hevc for .mp4),
+`prores`, `hevc`, `h264`.
+
+### Verifying output
+
+```bash
+# Check bit depth
+ffprobe -v error -select_streams v:0 \
+    -show_entries stream=pix_fmt \
+    -of default=noprint_wrappers=1:nokey=1 output.mov
+# Expected: yuv422p10le (ProRes) or yuv420p10le (HEVC)
+
+# Check audio was included
+ffprobe -v error -select_streams a:0 \
+    -show_entries stream=codec_name \
+    -of default=noprint_wrappers=1:nokey=1 output.mov
+# Expected: aac
+```
+
+### Known limitations
+
+- ProRes requires MOV container; HEVC/H.264 work best with MP4
+- ProRes playback on Windows requires codec packs; native on
+  macOS
+- Not all FFmpeg builds include `libx265` with 10-bit support
+- H.264 codec falls back to 8-bit (10-bit H.264 support varies)
+
+### Troubleshooting
+
+- **"ffmpeg: command not found"**: Install via `brew install
+  ffmpeg` (macOS) or `apt install ffmpeg` (Ubuntu). Verify
+  codec support with `ffmpeg -codecs | grep hevc`.
+- **Wrong colors in output**: Ensure input data follows BGR
+  channel order (OpenCV convention).
+- **Audio missing**: Check source video has audio
+  (`ffprobe -show_streams input.mp4`) and that
+  `--preserve-bit-depth` is set (audio passthrough only works
+  with the FFmpeg writer path).
+- **Wrong frame rate**: FPS is auto-detected from the source
+  video. If detection fails, it defaults to 23.976 fps.
+
 ## Utility Scripts
 
 - `check_setup.py` -- verify directory structure and dependencies
