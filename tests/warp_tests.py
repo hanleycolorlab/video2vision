@@ -326,7 +326,7 @@ class WarpTest(unittest.TestCase):
         out = warp_op({'image': image})['image']
         should_be = image.reshape(10, 10).T[::-1, :].reshape(10, 10, 1)
         self.assertEqual(out.shape, (10, 10, 1))
-        self.assertTrue((out == should_be).all(), out.reshape(10, 10))
+        self.assertTrue(np.abs(out - should_be).max().item() < 1e-10)
 
 
 if __name__ == '__main__':

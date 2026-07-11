@@ -196,7 +196,12 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue(os.path.exists(out_path))
             out = v2v.load(out_path)
 
-        should_be_path = os.path.join(data_root, 'uv_aligned_sample.jpg')
+        # Changes in the CV2 warp function result in slight differences in
+        # results between version 4 and 5.
+        if v2v.utils._CV2_VERSION >= (5, 0, 0):
+            should_be_path = os.path.join(data_root, 'uv_aligned_sample_5.jpg')
+        else:
+            should_be_path = os.path.join(data_root, 'uv_aligned_sample.jpg')
         should_be = v2v.load(should_be_path)
 
         self.assertEqual(out.shape, should_be.shape)

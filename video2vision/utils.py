@@ -398,6 +398,15 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
         detector_params = cv2.aruco.DetectorParameters_create()
     detector_params.adaptiveThreshWinSizeMax = 256
 
+    # detectMarkers function was removed in 5.0.0.
+    if _CV2_VERSION >= (5, 0, 0):
+        detector = cv2.aruco.ArucoDetector(detectorParams=detector_params)
+        detector.setDictionary(_MARKER_DICTIONARY)
+        detect = detector.detectMarkers
+    else:
+        def detect(image):
+            return cv2.aruco.detectMarkers(image, _MARKER_DICTIONARY)
+
     with _coerce_to_4dim(x):
         image = x['image']
         # ARUCO detector requires uint8, but we now work in float32. It also
@@ -409,19 +418,11 @@ def locate_aruco_markers(x: Dict, marker_ids: Optional[np.ndarray] = None):
             image = np.clip(image * 256., 0, 255).astype(np.uint8)
 
         for t in range(x['image'].shape[2]):
-            pts, ids, _ = cv2.aruco.detectMarkers(
-                image[:, :, t, :],
-                _MARKER_DICTIONARY,
-                parameters=detector_params,
-            )
+            pts, ids, _ = detect(image[:, :, t, :])
             # The ARUCO detector checks for rotated markers, but not flipped.
             # So we do it manually.
             if ids is None:
-                pts, ids, _ = cv2.aruco.detectMarkers(
-                    image[:, ::-1, t, :],
-                    _MARKER_DICTIONARY,
-                    parameters=detector_params,
-                )
+                pts, ids, _ = detect(image[:, ::-1, t, :])
                 for pt in pts:
                     pt[:, :, 0] = x['image'].shape[1] - pt[:, :, 0]
             if ids is not None:
