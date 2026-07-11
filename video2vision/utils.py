@@ -12,8 +12,47 @@ _CV2_VERSION = tuple(int(x) for x in cv2.__version__.split('.'))
 
 __all__ = [
     'detect_motion', 'extract_samples', 'gamma_scale',
-    'get_photoreceptor_template', 'locate_aruco_markers', 'read_jazirrad_file'
+    'get_photoreceptor_template', 'load_csv', 'locate_aruco_markers',
+    'read_jazirrad_file',
 ]
+
+
+def load_csv(path: str, normalize: bool = False,
+             skip_wavelength: bool = False) -> np.ndarray:
+    '''
+    Load a CSV file as a numpy array.
+
+    Handles common calibration data conventions: skipping a wavelength
+    column, converting from percentage values, and normalizing columns.
+
+    Args:
+        path (str): Path to the CSV file. The first row is treated as a
+        header and skipped.
+        normalize (bool): If True, normalize each column to sum to 1.
+        skip_wavelength (bool): If True, skip the first column (assumes
+        it contains wavelength metadata).
+
+    Returns:
+        :class:`numpy.ndarray`: The loaded data.
+    '''
+    data = np.loadtxt(path, delimiter=',', skiprows=1)
+    if skip_wavelength:
+        data = data[:, 1:]
+
+    # Convert from percentage if values are > 2 (i.e. in 0-100 range)
+    if data.max() > 2:
+        data /= 100
+
+    if normalize:
+        summand = data.sum(0, keepdims=True)
+        if (np.abs(summand - 1) > 1e-2).any():
+            print(
+                f'Warning: Columns in {path} do not sum to 1: '
+                f'{summand.flatten()}. Normalizing.'
+            )
+        data /= summand
+
+    return data
 
 
 @contextmanager
