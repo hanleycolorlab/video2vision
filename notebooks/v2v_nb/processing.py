@@ -484,16 +484,20 @@ def build_coarse_warp(vis_selector: SelectorBox, uv_selector: SelectorBox):
     uv_image = uv_image.astype(np.float32) / 255
     warped_uv_image = warp_op({'image': uv_image})['image']
     warped_uv_image = np.clip(256 * warped_uv_image, 0, 255).astype(np.uint8)
+
+    # The cached image is already converted from BGR to RGB, but we need to do
+    # that to the warped UV image.
+    vis_image = vis_selector.loaders[0].get_frame(
+        vis_selector.t + vis_selector.shifts[0], for_display=True,
+    )
     # Now resize down to match vis_image
     if (uv_selector.h, uv_selector.w) != warped_uv_image.shape[:2]:
         warped_uv_image = cv2.resize(
             warped_uv_image, (uv_selector.w, uv_selector.h)
         )
-
-    # The cached image is already converted from BGR to RGB, but we need to do
-    # that to the warped UV image.
+        vis_image = cv2.resize(vis_image, (vis_selector.w, vis_selector.h))
     display_image = np.concatenate(
-        (vis_selector._cached_image, warped_uv_image[:, :, ::-1]), axis=1
+        (vis_image, warped_uv_image[:, :, ::-1]), axis=1
     )
 
     return warp_op, Image.fromarray(display_image)

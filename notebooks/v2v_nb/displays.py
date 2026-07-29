@@ -5,6 +5,7 @@ import os
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
+from ipycanvas import MultiCanvas
 import ipyevents as events
 import ipywidgets as widgets
 import numpy as np
@@ -62,10 +63,9 @@ class DisplayBox(widgets.VBox):
             self.w, self.h = output_size
 
         # Construct widgets
-        self.display = Image.new('RGB', (self.w, self.h))
         self.buttons = self.make_button_panel(t)
-        self.display_image = widgets.Image(format='png')
-        super().__init__((self.display_image, self.buttons))
+        self.canvas = MultiCanvas(2, width=self.w, height=self.h, sync_image_data=True)
+        super().__init__((self.canvas, self.buttons))
 
         # Display first image
         self.set_frame(t)
@@ -93,6 +93,7 @@ class DisplayBox(widgets.VBox):
         '''
         # Apply gamma scaling to ensure visually correct display
         im_w, im_h = self.w // len(images), self.h
+        self.message = 0
 
         x = 0
         for image in images:
@@ -105,9 +106,8 @@ class DisplayBox(widgets.VBox):
                 image = np.clip(image, 0, 255).astype(np.uint8)
             if image.shape[:2] != (im_h, im_w):
                 image = cv2.resize(image, (im_w, im_h))
-            self.display.paste(Image.fromarray(image), (x, 0))
+            self.canvas[0].put_image_data(image, x, 0)
             x += image.shape[1]
-        self.display_image.value = self.display._repr_png_()
 
     @property
     def t(self) -> int:
@@ -186,7 +186,7 @@ class GhostBox(DisplayBox):
             w = max(loader_0.expected_size[0], loader_1.expected_size[0])
             output_size = (int(output_size * w), int(output_size * h))
         super().__init__(
-            loader_0, loader_1, t=t, shifts=shifts, output_size=output_size
+            loader_0, loader_1, t=t, shifts=shifts, output_size=output_size,
         )
 
     def set_images(self, rgb_image: np.ndarray, uv_image: np.ndarray):
@@ -240,7 +240,6 @@ class SelectorBox(DisplayBox):
 
         self.align_pipeline = align_pipeline
         self.font_color = font_color or box_color
-        self.box_color = np.array(box_color)
         self.border_margin = border_margin
         self.sample_size = w
         self.marker_choice = marker_choice
@@ -248,7 +247,6 @@ class SelectorBox(DisplayBox):
         # These will store the current crosshairs:
         # idxs (List[int]): Numerical indices of the crosshairs.
         # crosshair_type (List[int]): Whether they are Xs or boxes.
-        # crosshairs (List[Tuple[int, int]]): The actual locations of the
         # centers of the crosshairs, in the original image coordinates, not the
         # display coordinates.
         self.idxs, self.crosshair_type, self.crosshairs = [], [], []
@@ -286,11 +284,14 @@ class SelectorBox(DisplayBox):
 
         super().__init__(loader, t=t, output_size=output_size)
 
+        box_color = f"#{box_color[0]:02x}{box_color[1]:02x}{box_color[2]:02x}"
+        self.canvas[1].stroke_style = box_color
+
         self.auto_op = auto_op
 
         # Register method for handling clicks
         self.dom_handler = events.Event(
-            source=self.display_image, watched_events=['click']
+            source=self.canvas, watched_events=['click']
         )
         self.dom_handler.on_dom_event(self._handle_click)
 
@@ -313,15 +314,30 @@ class SelectorBox(DisplayBox):
         if self.cache_path is not None:
             self.save_crosshairs(self.cache_path)
 
-        self._update_image()
+        self.canvas[1].clear_rect(0, 0, self.w, self.h)
+
+    def _draw_crosshair(self, pt: Tuple[int, int], crosshair_type: bool):
+        # Rescale to display coordinate system
+        x = int(self.w * pt[0] / self.original_size[0])
+        y = int(self.h * pt[1] / self.original_size[1])
+        ch_w = max(int(self.sample_size * self.w / self.original_size[0]), 1)
+        ch_h = max(int(self.sample_size * self.h / self.original_size[1]), 1)
+        ul_x, ul_y = x - (ch_w // 2), y - (ch_h // 2)
+        lr_x, lr_y = ul_x + ch_w, ul_y + ch_h
+
+        if self.marker_choice == 'cross':
+            if crosshair_type:
+                self.canvas[1].stroke_line(ul_x, ul_y, lr_x, lr_y)
+                self.canvas[1].stroke_line(ul_x, lr_y, lr_x, ul_y)
+            else:
+                self.canvas[1].stroke_line(ul_x, y, lr_x, y)
+                self.canvas[1].stroke_line(x, ul_y, x, lr_y)
+        elif self.marker_choice == 'box':
+            self.canvas[1].stroke_rect(ul_x, ul_y, ch_w, ch_h)
 
     def get_samples(self) -> Tuple[np.ndarray, np.ndarray]:
         if len(self.idxs) == 0:
-            if self._cached_image.ndim == 2:
-                n_c = 1
-            else:
-                n_c = self._cached_image.shape[2]
-            return np.empty((0, n_c)), np.empty((0,), dtype=bool)
+            return np.empty((0, 3)), np.empty((0,), dtype=bool)
 
         if max(self.idxs) + 1 != len(self.idxs):
             raise RuntimeError('Not all samples selected')
@@ -340,17 +356,17 @@ class SelectorBox(DisplayBox):
         return samples[reidx, :], types[reidx]
 
     def _handle_click(self, event: Dict):
+        self.event = event
         # Extract point from event dictionary
-        x, y = event['dataX'], event['dataY']
-        # Get rescaling factor
-        h, w, *_ = self._cached_image.shape
-        rs = (self.original_size[0] / w, self.original_size[1] / h)
+        w, h = self.original_size
+        x = int(w * event['relativeX'] / event['boundingRectWidth'])
+        y = int(h * event['relativeY'] / event['boundingRectHeight'])
 
         # If self.crosshairs is empty, the argmin will error out.
         if self.crosshairs:
             # We want to do the comparison in the displayed coordinate space,
             # not the original coordinate system.
-            disp_ch = np.array(self.crosshairs) / np.array(rs)
+            disp_ch = np.array(self.crosshairs)
             dist_sq = ((disp_ch - np.array([x, y]))**2).sum(1)
             min_idx = np.argmin(dist_sq)
             min_dist_sq = dist_sq[min_idx]
@@ -358,12 +374,11 @@ class SelectorBox(DisplayBox):
             min_dist_sq = ASSOCIATION_RADIUS_SQ + 1
 
         if min_dist_sq <= ASSOCIATION_RADIUS_SQ:
+            self._remove_crosshair(self.crosshairs[min_idx])
             self.idxs.pop(min_idx)
             self.crosshair_type.pop(min_idx)
             self.crosshairs.pop(min_idx)
         else:
-            # Rescale point to original coordinate system
-            x, y = int(rs[0] * x), int(rs[1] * y)
             # Check if we're too close to the border
             if (
                 (min(x, self.original_size[0] - x) < self.border_margin) or
@@ -378,13 +393,12 @@ class SelectorBox(DisplayBox):
             else:
                 idx = 0
             self.idxs.append(idx)
+            self._draw_crosshair((x, y), int(event['shiftKey']))
             self.crosshair_type.append(int(event['shiftKey']))
             self.crosshairs.append((x, y))
 
         if self.cache_path is not None:
             self.save_crosshairs(self.cache_path)
-
-        self._update_image()
 
     def load_crosshairs(self, path: str, norefresh: bool = False):
         with open(path, 'r') as crosshairs_file:
@@ -398,8 +412,8 @@ class SelectorBox(DisplayBox):
         if not norefresh:
             if crosshairs['t'] != self.t:
                 self.set_frame(crosshairs['t'], noauto=True)
-            else:
-                self._update_image()
+            for (x, y), ct in zip(self.crosshairs, self.crosshair_type):
+                self._draw_crosshair((x, y), ct)
         else:
             return crosshairs['t']
 
@@ -411,43 +425,13 @@ class SelectorBox(DisplayBox):
             self.set_frame, min_t, max_t, t, self.clear_crosshairs
         )
 
-    @lru_cache
-    def make_crosshairs(self, w: int, h: int) -> Tuple[np.ndarray, np.ndarray]:
-        r_w, r_h = max(1, w // 25), max(1, h // 25)
-        box_color = np.concatenate((self.box_color, (1,)))
-
-        if self.marker_choice == 'box':
-            crosshair_image = np.zeros((h, w, 4), dtype=np.uint8)
-            crosshair_image[:r_h, :, :] = box_color
-            crosshair_image[-r_h:, :, :] = box_color
-            crosshair_image[:, :r_w, :] = box_color
-            crosshair_image[:, -r_w:, :] = box_color
-
-            shift_image = np.zeros((h, w, 4), dtype=np.uint8)
-            if h >= w:
-                ys = np.arange(h + 1 - r_h, dtype=np.int64)
-                xs = ((w / h) * ys).astype(np.int64)
-                ys = np.concatenate([ys] * r_h)
-                xs = (xs.reshape(-1, 1) + np.arange(r_h, dtype=np.int64))
-                xs = xs.flatten()
-            else:
-                xs = np.arange(w + 1 - r_w, dtype=np.int64)
-                ys = ((h / w) * xs).astype(np.int64)
-                xs = np.concatenate([xs] * r_w)
-                ys = (ys.reshape(-1, 1) + np.arange(r_w, dtype=np.int64))
-                ys = ys.flatten()
-            shift_image[ys, xs] = shift_image[ys, w - xs - 1] = box_color
-
-        elif self.marker_choice == 'cross':
-            crosshair_image = np.zeros((h, w, 4), dtype=np.uint8)
-            crosshair_image[(h - r_h) // 2:(h + r_h) // 2, :, :] = box_color
-            crosshair_image[:, (w - r_w) // 2:(w + r_w) // 2, :] = box_color
-            shift_image = crosshair_image
-
-        else:
-            raise ValueError(self.marker_choice)
-
-        return crosshair_image, shift_image
+    def _remove_crosshair(self, pt: Tuple[int, int]):
+        # Rescale to display coordinate system
+        x = int(self.w * pt[0] / self.original_size[0])
+        y = int(self.h * pt[1] / self.original_size[1])
+        ch_w = max(int(self.sample_size * self.w / self.original_size[0]), 1)
+        ch_h = max(int(self.sample_size * self.h / self.original_size[1]), 1)
+        self.canvas[1].clear_rect(x - ch_w // 2, y - ch_h // 2, ch_w, ch_h)
 
     def save_crosshairs(self, path: str):
         crosshairs = {
@@ -485,77 +469,12 @@ class SelectorBox(DisplayBox):
         if image.dtype != np.uint8:
             image = np.clip(image, 0, 255).astype(np.uint8)
 
-        ch_h = max(int(self.sample_size * self.h / image.shape[0]), 1)
-        ch_w = max(int(self.sample_size * self.w / image.shape[1]), 1)
-        self._cached_crosshairs = self.make_crosshairs(ch_w, ch_h)
-
         self.original_size = image.shape[:2][::-1]
         if (self.h, self.w) != image.shape[:2]:
             image = cv2.resize(image, (self.w, self.h))
 
-        self._cached_image = image
-        self._update_image()
+        self.canvas[0].put_image_data(image)
 
     def _update_cache(self):
         if self.cache_path is not None:
             self.save_crosshairs(self.cache_path)
-
-    def _update_image(self):
-        # We're going to modify the image in place, so clone it. It should
-        # already be resized to the correct size.
-        image = np.copy(self._cached_image)
-        is_rgb = (image.ndim == 3) and (image.shape[2] == 3)
-
-        h, w, *_ = image.shape
-        rs = (w / self.original_size[0], h / self.original_size[1])
-
-        ch_h, ch_w, _ = self._cached_crosshairs[0].shape
-
-        for (x, y), s in zip(self.crosshairs, self.crosshair_type):
-            patch = self._cached_crosshairs[s]
-            mask, patch = patch[:, :, -1:], patch[:, :, :-1]
-            if not is_rgb:
-                patch, mask = patch.max(axis=2), mask.squeeze(2)
-            # First, determine the desired upper-left and lower-right corners
-            # of the patch in the resized image.
-            ul_im_x = int(x * rs[0]) - (ch_w // 2)
-            ul_im_y = int(y * rs[1]) - (ch_h // 2)
-            lr_im_x = ul_im_x + patch.shape[1]
-            lr_im_y = ul_im_y + patch.shape[0]
-            # Now, we account for the possibility that the patch may not fall
-            # entirely within the image. To handle that, we subset the patch.
-            ul_pa_x, ul_pa_y = max(-ul_im_x, 0), max(-ul_im_y, 0)
-            if (ul_pa_x >= patch.shape[1]) or (ul_pa_y >= patch.shape[0]):
-                continue
-            ul_im_x, ul_im_y = max(ul_im_x, 0), max(ul_im_y, 0)
-            lr_pa_x = patch.shape[1] - max(lr_im_x - image.shape[1], 0)
-            lr_pa_y = patch.shape[0] - max(lr_im_y - image.shape[0], 0)
-            if (lr_pa_x <= ul_pa_x) or (lr_pa_y <= ul_pa_y):
-                continue
-            lr_im_x = min(lr_im_x, image.shape[1])
-            lr_im_y = min(lr_im_y, image.shape[0])
-            image[ul_im_y:lr_im_y, ul_im_x:lr_im_x] = (
-                (image[ul_im_y:lr_im_y, ul_im_x:lr_im_x] *
-                 (1 - mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x])) +
-                (patch[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x] *
-                 mask[ul_pa_y:lr_pa_y, ul_pa_x:lr_pa_x])
-            )
-
-        if image.dtype != np.uint8:
-            image = np.clip(image, 0, 255).astype(np.uint8)
-        if (image.ndim == 3) and (image.shape[2] == 1):
-            image = image.squeeze(2)
-
-        image = Image.fromarray(image)
-
-        draw = ImageDraw.Draw(image)
-        for number, (x, y) in zip(self.idxs, self.crosshairs):
-            x = int(x * rs[0]) + (ch_w // 2) + 4
-            y = int(y * rs[1]) + (ch_h // 2) + 4
-            draw.text(
-                (x, y), str(number), font_size=max(int(32 * w / 2000), 1),
-                fill=(self.font_color if is_rgb else max(self.font_color)),
-            )
-
-        self.display = image
-        self.display_image.value = self.display._repr_png_()

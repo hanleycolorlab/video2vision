@@ -1,3 +1,4 @@
+ipycanvas
 ipyevents
 matplotlib
 notebook
